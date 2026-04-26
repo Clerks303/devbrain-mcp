@@ -29,6 +29,25 @@ tools that any compatible client (Claude Code, Cursor, Claude Desktop) can use.
 Think of it as a long-term memory layer for your coding agent — one that gets
 sharper as the project grows, instead of being reset every time.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    A[Claude Code / Cursor / Desktop] -->|MCP protocol| B[devbrain-mcp]
+    B --> C[(SQLite WAL)]
+    B --> D[FTS5 Full-Text]
+    B --> E[sqlite-vec<br/>Vector Search]
+    B --> F[Hybrid Ranking]
+    C --> G[Knowledge Graph<br/>entities · relations · observations]
+    C --> H[Lessons & Snapshots]
+    C --> I[Sessions · Rules · Issues]
+```
+
+The agent talks MCP. DevBrain stores everything in a single SQLite file with
+WAL mode for concurrent reads, augmented with sqlite-vec for embeddings and
+FTS5 for full-text. A hybrid ranker fuses both signals when the agent asks
+for context.
+
 ## Install
 
 ```bash
