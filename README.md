@@ -11,8 +11,23 @@ a live knowledge graph of your codebase — entities, relations, decisions,
 conventions, lessons — so Claude Code (or any MCP-compatible client) picks up
 where the last session left off instead of starting from a blank slate.
 
-DevBrain is the memory half of [AgentWeave × DevBrain](https://github.com/artefis):
-an agentic desktop IDE for vibe coders. It also works standalone.
+DevBrain is the memory half of AgentWeave × DevBrain — a companion desktop
+IDE for vibe coders, currently in development. It also works standalone.
+
+## Why DevBrain?
+
+LLM coding agents are stateless by design — every session starts from scratch.
+For projects that span weeks or months, that means re-explaining the architecture,
+the conventions, the past mistakes, and the gotchas every single time.
+
+DevBrain solves this by maintaining a typed knowledge graph of your project that
+the agent can query, update, and learn from across sessions. It tracks entities
+and relations (files, modules, decisions), records lessons from outcomes, scopes
+rules per file pattern or entity type, and exposes everything through ~70 MCP
+tools that any compatible client (Claude Code, Cursor, Claude Desktop) can use.
+
+Think of it as a long-term memory layer for your coding agent — one that gets
+sharper as the project grows, instead of being reset every time.
 
 ## Install
 
