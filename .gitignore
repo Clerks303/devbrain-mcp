@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# OS
+.DS_Store
+
+# Editor / local tooling
+.claude/
+.bridgespace/
+.serena/
+
+# Internal docs (not for public repo)
+docs/PLAN-IMPLEMENTATION-V2.md
+docs/PRESENTATION-PROJET-devbrain.md
+docs/presentation-mentor.md
+
+# Databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Env / secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
