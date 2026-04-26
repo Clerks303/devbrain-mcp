@@ -91,27 +91,27 @@ Restart the client. DevBrain now appears as a tool provider.
 
 ## What it gives your agent
 
-DevBrain exposes **~54 MCP tools** across these categories:
+DevBrain exposes **~70 MCP tools** across these categories:
 
-- **Graph (15)** — entities, relations, observations, projects, traversal.
+- **Graph (9)** — entities, relations, observations, projects, traversal.
 - **Files (5)** — content-hash digests, symbol extraction, fast file lookup.
-- **Search (4)** — FTS5 full-text + vector similarity + hybrid ranking.
-- **Issues (4)** — report / resolve / list known bugs and tech debt.
-- **Sessions (5)** — session start/end with summary, auto-context on resume.
-- **Rules (3)** — project conventions with scope (global / file pattern / entity type).
-- **Lessons (4)** — learn from outcomes, recall on similar situations, reinforce.
-- **Snapshots (3)** — label a state before risky refactors, diff across time.
-- **Linking (3)** — bind files to entities / rules / issues.
-- **Auto-context (2)** — one-call context retrieval for a task description.
-- **Health & metrics (4)** — DB stats, embedding coverage, learning trends.
+- **Search & context (4)** — FTS5 full-text + vector similarity + hybrid ranking + auto-context.
+- **Issues (6)** — report / resolve / list / update known bugs and tech debt.
+- **Sessions (6)** — session start/end with summary, deltas, resume-with-context.
+- **Rules (5)** — project conventions with scope (global / file pattern / entity type).
+- **Lessons & learning (11)** — learn from outcomes, recall, reinforce, learning reports & patterns.
+- **Goals (13)** — record missions, link entities to goals, suggest next actions.
+- **Snapshots (5)** — label state before risky refactors, restore, diff across time.
+- **Linking (2)** — bind files to entities / rules / issues.
+- **Scan & health (4)** — project scan, DB health, embedding coverage, metrics.
 
 The full authoritative list is surfaced via the MCP `tools/list` request.
 
 ## Integration with AgentWeave
 
-[AgentWeave](https://github.com/artefis/agentweave) is the companion desktop app.
-It spawns `devbrain-mcp` as a sidecar, proxies the 54 tools over Tauri IPC, and
-builds the visual project map and context-builder UI on top.
+AgentWeave is the companion desktop app (in development). It spawns
+`devbrain-mcp` as a sidecar, proxies the MCP tools over Tauri IPC, and builds
+the visual project map and context-builder UI on top.
 
 If AgentWeave finds `devbrain-mcp` on your `PATH` it will use it automatically;
 otherwise you can set `DEVBRAIN_SCRIPT_PATH` to point at a local checkout's
