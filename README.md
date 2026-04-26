@@ -1,5 +1,10 @@
 # devbrain-mcp
 
+![tests](https://github.com/Clerks303/devbrain-mcp/actions/workflows/test.yml/badge.svg)
+![license](https://img.shields.io/github/license/Clerks303/devbrain-mcp)
+![typescript](https://img.shields.io/badge/typescript-5.x-blue)
+![MCP](https://img.shields.io/badge/MCP-compatible-purple)
+
 **Persistent project memory for AI coding agents.**
 A [Model Context Protocol](https://modelcontextprotocol.io) server that maintains
 a live knowledge graph of your codebase — entities, relations, decisions,
