@@ -5,22 +5,32 @@ export function vectorToBlob(vector: number[]): Buffer {
   return Buffer.from(new Float32Array(vector).buffer);
 }
 
+// Empty embeddings (length 0) come from the NoOp provider when no embedding
+// backend is configured. Skipping the upsert keeps the KNN index clean —
+// indexing zero vectors would put every row at cosine distance 1 and bias search.
+function isEmpty(embedding: number[]): boolean {
+  return !embedding || embedding.length === 0;
+}
+
 export class VectorStore {
   constructor(private db: Database.Database) {}
 
   upsertEntityEmbedding(id: string, embedding: number[]): void {
+    if (isEmpty(embedding)) return;
     const blob = vectorToBlob(embedding);
     this.db.prepare('DELETE FROM entity_embeddings WHERE id = ?').run(id);
     this.db.prepare('INSERT INTO entity_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
   }
 
   upsertObservationEmbedding(id: string, embedding: number[]): void {
+    if (isEmpty(embedding)) return;
     const blob = vectorToBlob(embedding);
     this.db.prepare('DELETE FROM observation_embeddings WHERE id = ?').run(id);
     this.db.prepare('INSERT INTO observation_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
   }
 
   searchEntities(queryEmbedding: number[], limit: number = 10): SearchResult[] {
+    if (isEmpty(queryEmbedding)) return [];
     const blob = vectorToBlob(queryEmbedding);
     const rows = this.db.prepare(`
       SELECT id, distance FROM entity_embeddings
@@ -32,6 +42,7 @@ export class VectorStore {
   }
 
   searchObservations(queryEmbedding: number[], limit: number = 10): SearchResult[] {
+    if (isEmpty(queryEmbedding)) return [];
     const blob = vectorToBlob(queryEmbedding);
     const rows = this.db.prepare(`
       SELECT id, distance FROM observation_embeddings
@@ -53,12 +64,14 @@ export class VectorStore {
   // --- File Digest Embeddings ---
 
   upsertFileDigestEmbedding(id: string, embedding: number[]): void {
+    if (isEmpty(embedding)) return;
     const blob = vectorToBlob(embedding);
     this.db.prepare('DELETE FROM file_digest_embeddings WHERE id = ?').run(id);
     this.db.prepare('INSERT INTO file_digest_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
   }
 
   searchFileDigests(queryEmbedding: number[], limit: number = 10): SearchResult[] {
+    if (isEmpty(queryEmbedding)) return [];
     const blob = vectorToBlob(queryEmbedding);
     const rows = this.db.prepare(`
       SELECT id, distance FROM file_digest_embeddings
@@ -76,12 +89,14 @@ export class VectorStore {
   // --- Issue Embeddings ---
 
   upsertIssueEmbedding(id: string, embedding: number[]): void {
+    if (isEmpty(embedding)) return;
     const blob = vectorToBlob(embedding);
     this.db.prepare('DELETE FROM issue_embeddings WHERE id = ?').run(id);
     this.db.prepare('INSERT INTO issue_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
   }
 
   searchIssues(queryEmbedding: number[], limit: number = 10): SearchResult[] {
+    if (isEmpty(queryEmbedding)) return [];
     const blob = vectorToBlob(queryEmbedding);
     const rows = this.db.prepare(`
       SELECT id, distance FROM issue_embeddings
@@ -99,12 +114,14 @@ export class VectorStore {
   // --- Session Embeddings ---
 
   upsertSessionEmbedding(id: string, embedding: number[]): void {
+    if (isEmpty(embedding)) return;
     const blob = vectorToBlob(embedding);
     this.db.prepare('DELETE FROM session_embeddings WHERE id = ?').run(id);
     this.db.prepare('INSERT INTO session_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
   }
 
   searchSessions(queryEmbedding: number[], limit: number = 10): SearchResult[] {
+    if (isEmpty(queryEmbedding)) return [];
     const blob = vectorToBlob(queryEmbedding);
     const rows = this.db.prepare(`
       SELECT id, distance FROM session_embeddings
@@ -121,12 +138,14 @@ export class VectorStore {
   // --- Rule Embeddings ---
 
   upsertRuleEmbedding(id: string, embedding: number[]): void {
+    if (isEmpty(embedding)) return;
     const blob = vectorToBlob(embedding);
     this.db.prepare('DELETE FROM rule_embeddings WHERE id = ?').run(id);
     this.db.prepare('INSERT INTO rule_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
   }
 
   searchRules(queryEmbedding: number[], limit: number = 10): SearchResult[] {
+    if (isEmpty(queryEmbedding)) return [];
     const blob = vectorToBlob(queryEmbedding);
     const rows = this.db.prepare(`
       SELECT id, distance FROM rule_embeddings
@@ -143,12 +162,14 @@ export class VectorStore {
   // --- Lesson Embeddings ---
 
   upsertLessonEmbedding(id: string, embedding: number[]): void {
+    if (isEmpty(embedding)) return;
     const blob = vectorToBlob(embedding);
     this.db.prepare('DELETE FROM lesson_embeddings WHERE id = ?').run(id);
     this.db.prepare('INSERT INTO lesson_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
   }
 
   searchLessons(queryEmbedding: number[], limit: number = 10): SearchResult[] {
+    if (isEmpty(queryEmbedding)) return [];
     const blob = vectorToBlob(queryEmbedding);
     const rows = this.db.prepare(`
       SELECT id, distance FROM lesson_embeddings
