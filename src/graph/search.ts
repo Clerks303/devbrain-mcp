@@ -3,6 +3,55 @@ import type { VectorStore } from '../db/vector.js';
 import type { EmbeddingProvider } from '../embeddings/provider.js';
 import type { HybridSearchResult } from '../types.js';
 
+// Reciprocal Rank Fusion constant. k=60 is the canonical value from the
+// original RRF paper (Cormack et al. 2009). Higher k flattens contributions
+// from low-ranked items; lower k makes top ranks dominate.
+const RRF_K = 60;
+
+// Per-source weights. These are deliberately gentler than the previous
+// hand-tuned cosine-distance multipliers because RRF already discounts
+// lower ranks naturally — the weights only express *source trust*.
+const RRF_WEIGHTS = {
+  entityVector: 1.0,
+  observationVector: 0.7,
+  issueVector: 0.6,
+  nameMatch: 0.9,
+} as const;
+
+type Source = keyof typeof RRF_WEIGHTS;
+
+interface Accumulator {
+  rrf: number;
+  sources: Set<Source>;
+}
+
+function addRanked(
+  acc: Map<string, Accumulator>,
+  entityId: string,
+  rank: number, // 0-indexed
+  source: Source,
+): void {
+  const contribution = RRF_WEIGHTS[source] / (RRF_K + rank + 1);
+  const existing = acc.get(entityId);
+  if (existing) {
+    existing.rrf += contribution;
+    existing.sources.add(source);
+  } else {
+    acc.set(entityId, { rrf: contribution, sources: new Set([source]) });
+  }
+}
+
+function classify(sources: Set<Source>): 'vector' | 'graph' | 'both' {
+  const hasVector =
+    sources.has('entityVector') ||
+    sources.has('observationVector') ||
+    sources.has('issueVector');
+  const hasGraph = sources.has('nameMatch');
+  if (hasVector && hasGraph) return 'both';
+  if (hasVector) return 'vector';
+  return 'graph';
+}
+
 export async function hybridSearch(
   store: KnowledgeStore,
   vectorStore: VectorStore,
@@ -15,96 +64,64 @@ export async function hybridSearch(
   } = {},
 ): Promise<HybridSearchResult[]> {
   const limit = options.limit ?? 10;
-  const resultMap = new Map<string, { score: number; matchType: 'vector' | 'graph' | 'both' }>();
+  const acc = new Map<string, Accumulator>();
 
-  // 1. Vector search on entities
+  // Vector search — skip entirely when no embedding provider is configured
+  // (NoOp returns []); RRF then degrades to a single-source name-match ranker.
   const queryEmbedding = await embeddingProvider.embed(query);
-  const entityResults = vectorStore.searchEntities(queryEmbedding, limit * 2);
+  const hasVector = queryEmbedding.length > 0;
 
-  for (const result of entityResults) {
-    // Cosine distance: lower = more similar. Convert to score (0-1, higher = better)
-    const score = 1 - result.distance;
-    resultMap.set(result.id, { score, matchType: 'vector' });
-  }
+  if (hasVector) {
+    const entityResults = vectorStore.searchEntities(queryEmbedding, limit * 2);
+    entityResults.forEach((r, rank) => addRanked(acc, r.id, rank, 'entityVector'));
 
-  // 2. Vector search on observations to find related entities
-  const obsResults = vectorStore.searchObservations(queryEmbedding, limit);
-  for (const result of obsResults) {
-    const obs = store.getObservation(result.id);
-    if (!obs) continue;
-    const entityId = obs.entityId;
-    const score = (1 - result.distance) * 0.8; // Slightly lower weight for observation matches
-    const existing = resultMap.get(entityId);
-    if (existing) {
-      existing.score = Math.max(existing.score, score);
-      existing.matchType = 'both';
-    } else {
-      resultMap.set(entityId, { score, matchType: 'graph' });
-    }
-  }
+    const obsResults = vectorStore.searchObservations(queryEmbedding, limit);
+    obsResults.forEach((r, rank) => {
+      const obs = store.getObservation(r.id);
+      if (obs) addRanked(acc, obs.entityId, rank, 'observationVector');
+    });
 
-  // TODO: File digest search could be used to boost entities linked to matching files
-  // via the linking system (file:path entities + defined_in relations).
-  // Currently skipped because file digest IDs don't map directly to entity IDs.
-
-  // 2b. Vector search on issues to find related entities
-  try {
-    const issueResults = vectorStore.searchIssues(queryEmbedding, limit);
-    for (const result of issueResults) {
-      // Try to get the issue to find its entityId
-      try {
-        const issue = store.getIssue(result.id);
-        if (issue?.entityId) {
-          const score = (1 - result.distance) * 0.7;
-          const existing = resultMap.get(issue.entityId);
-          if (existing) {
-            existing.score = Math.max(existing.score, score);
-            existing.matchType = 'both';
-          } else {
-            resultMap.set(issue.entityId, { score, matchType: 'graph' });
-          }
+    try {
+      const issueResults = vectorStore.searchIssues(queryEmbedding, limit);
+      issueResults.forEach((r, rank) => {
+        try {
+          const issue = store.getIssue(r.id);
+          if (issue?.entityId) addRanked(acc, issue.entityId, rank, 'issueVector');
+        } catch {
+          // issue may have been deleted
         }
-      } catch {
-        // issue may have been deleted
-      }
+      });
+    } catch {
+      // issue_embeddings table may not exist yet
     }
-  } catch {
-    // issue_embeddings table may not exist yet
   }
 
-  // 3. Text search fallback (name matching)
+  // Name match — treated as its own ranked source. Order is the order
+  // returned by the store (typically id/created_at); good enough for RRF.
   const nameMatches = store.findEntitiesByName(query, options.projectId);
-  for (const entity of nameMatches) {
-    const existing = resultMap.get(entity.id);
-    if (existing) {
-      existing.score += 0.3; // Boost for name match
-      existing.matchType = 'both';
-    } else {
-      resultMap.set(entity.id, { score: 0.5, matchType: 'graph' });
-    }
-  }
+  nameMatches.forEach((entity, rank) => addRanked(acc, entity.id, rank, 'nameMatch'));
 
-  // 4. Build results
   const results: HybridSearchResult[] = [];
-  for (const [entityId, { score, matchType }] of resultMap) {
+  for (const [entityId, { rrf, sources }] of acc) {
     const entity = store.getEntity(entityId);
     if (!entity) continue;
 
-    // Filter by project
     if (options.projectId && entity.projectId && entity.projectId !== options.projectId) {
       continue;
     }
-
-    // Filter by type
     if (options.types && options.types.length > 0 && !options.types.includes(entity.type)) {
       continue;
     }
 
     const observations = store.getObservations(entityId);
-    results.push({ entity, score, matchType, observations });
+    results.push({
+      entity,
+      score: rrf,
+      matchType: classify(sources),
+      observations,
+    });
   }
 
-  // Sort by score descending, take top N
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, limit);
 }
