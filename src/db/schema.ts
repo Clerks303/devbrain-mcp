@@ -409,6 +409,18 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     // FTS5 may already exist or not be available
   }
 
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS lessons_fts USING fts5(
+        trigger_text, action,
+        content='lessons',
+        content_rowid='rowid'
+      );
+    `);
+  } catch {
+    // FTS5 may already exist or not be available
+  }
+
   // FTS5 sync triggers for entities
   try {
     db.exec(`
@@ -451,6 +463,40 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     `);
   } catch {
     // triggers may already exist
+  }
+
+  // FTS5 sync triggers for lessons
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS lessons_fts_insert AFTER INSERT ON lessons BEGIN
+        INSERT INTO lessons_fts(rowid, trigger_text, action) VALUES (NEW.rowid, NEW.trigger_text, NEW.action);
+      END;
+    `);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS lessons_fts_delete AFTER DELETE ON lessons BEGIN
+        INSERT INTO lessons_fts(lessons_fts, rowid, trigger_text, action) VALUES ('delete', OLD.rowid, OLD.trigger_text, OLD.action);
+      END;
+    `);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS lessons_fts_update AFTER UPDATE ON lessons BEGIN
+        INSERT INTO lessons_fts(lessons_fts, rowid, trigger_text, action) VALUES ('delete', OLD.rowid, OLD.trigger_text, OLD.action);
+        INSERT INTO lessons_fts(rowid, trigger_text, action) VALUES (NEW.rowid, NEW.trigger_text, NEW.action);
+      END;
+    `);
+  } catch {
+    // triggers may already exist
+  }
+
+  // One-time backfill of lessons_fts for pre-existing rows (idempotent via meta flag).
+  // Without this, DBs created before lessons_fts existed would have empty FTS.
+  try {
+    const flag = db.prepare("SELECT value FROM meta WHERE key = 'lessons_fts_backfilled'").get() as { value: string } | undefined;
+    if (!flag) {
+      db.exec("INSERT INTO lessons_fts(lessons_fts) VALUES('rebuild')");
+      db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('lessons_fts_backfilled', '1')").run();
+    }
+  } catch {
+    // FTS5 may not be available — backfill skipped
   }
 
   // Handle embedding dimension changes — opt-in destruction.
