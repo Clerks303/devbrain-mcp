@@ -88,6 +88,7 @@ Restart the client. DevBrain now appears as a tool provider.
 | `DEVBRAIN_OLLAMA_URL`           | `http://localhost:11434`       | Ollama endpoint for local embeddings.                |
 | `DEVBRAIN_LOG_LEVEL`            | `info`                         | `debug` / `info` / `warn` / `error`.                 |
 | `DEVBRAIN_HOOK_PORT`            | `7384`                         | HTTP port for Claude Code hooks integration.         |
+| `DEVBRAIN_ALLOW_EMBEDDING_RECREATE` | _(unset)_                  | Set to `1` to opt in to destructive vec0 table recreate when the embedding dimension changes (e.g. switching openai 1536 ↔ ollama 768). Without this flag, DevBrain refuses to drop existing embeddings. |
 
 ## What it gives your agent
 
