@@ -64,6 +64,23 @@ function createVecTables(db: Database.Database, dimension: number): void {
   }
 }
 
+export class EmbeddingDimensionMismatchError extends Error {
+  constructor(
+    public readonly storedDimension: number,
+    public readonly requestedDimension: number,
+  ) {
+    super(
+      `Embedding dimension mismatch: database was built with ${storedDimension}-dim vectors, ` +
+      `but the current configuration requests ${requestedDimension}-dim. ` +
+      `Recreating vec0 tables would PERMANENTLY DELETE existing embeddings. ` +
+      `To proceed anyway, set DEVBRAIN_ALLOW_EMBEDDING_RECREATE=1 (then run ` +
+      `devbrain_reindex_embeddings to repopulate). To preserve embeddings, ` +
+      `revert the embedding provider/model so the dimension matches ${storedDimension}.`,
+    );
+    this.name = 'EmbeddingDimensionMismatchError';
+  }
+}
+
 export function initDatabase(dbPath: string, embeddingDimension: number = 1536): Database.Database {
   ensureDir(path.dirname(dbPath));
   const db = new Database(dbPath);
@@ -436,13 +453,23 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     // triggers may already exist
   }
 
-  // Handle embedding dimension changes
+  // Handle embedding dimension changes — opt-in destruction.
+  // Default behavior changed from silent DROP to throw, to prevent surprise
+  // data loss when a user switches providers (openai 1536 ↔ ollama 768).
+  // Set DEVBRAIN_ALLOW_EMBEDDING_RECREATE=1 to allow the destructive recreate.
   const storedDimension = getStoredDimension(db);
 
   if (storedDimension !== null && storedDimension !== embeddingDimension) {
+    const allowRecreate = process.env.DEVBRAIN_ALLOW_EMBEDDING_RECREATE === '1';
+    if (!allowRecreate) {
+      db.close();
+      throw new EmbeddingDimensionMismatchError(storedDimension, embeddingDimension);
+    }
     console.error(
-      `Warning: Embedding dimension changed from ${storedDimension} to ${embeddingDimension}. ` +
-      `Dropping and recreating vec0 tables. Existing embeddings will be lost.`
+      `Warning: DEVBRAIN_ALLOW_EMBEDDING_RECREATE=1 is set. ` +
+      `Embedding dimension changed from ${storedDimension} to ${embeddingDimension}. ` +
+      `Dropping and recreating vec0 tables. Existing embeddings will be lost. ` +
+      `Run devbrain_reindex_embeddings after restart to repopulate.`,
     );
     recreateVecTables(db, embeddingDimension);
   } else {
