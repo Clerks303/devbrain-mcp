@@ -267,4 +267,78 @@ describe('KnowledgeStore - Pagination', () => {
       expect(page1[0].id).not.toBe(page2[0].id);
     });
   });
+
+  describe('listEntitiesPage cursor pagination', () => {
+    beforeEach(() => {
+      for (let i = 0; i < 12; i++) {
+        store.addEntity({ name: `Entity${i}`, type: 'class', projectId });
+      }
+    });
+
+    it('returns nextCursor when more rows exist', () => {
+      const page = store.listEntitiesPage(projectId, { limit: 5 });
+      expect(page.items.length).toBe(5);
+      expect(page.nextCursor).not.toBeNull();
+    });
+
+    it('returns null cursor on the final page', () => {
+      const page = store.listEntitiesPage(projectId, { limit: 100 });
+      expect(page.items.length).toBe(12);
+      expect(page.nextCursor).toBeNull();
+    });
+
+    it('walks all rows without duplicates via cursor', () => {
+      const seen = new Set<string>();
+      let cursor: string | null | undefined = undefined;
+      let pages = 0;
+      while (true) {
+        const page = store.listEntitiesPage(projectId, { limit: 4, cursor });
+        for (const e of page.items) seen.add(e.id);
+        pages++;
+        if (!page.nextCursor || pages > 10) break;
+        cursor = page.nextCursor;
+      }
+      expect(seen.size).toBe(12);
+    });
+
+    it('treats malformed cursor as no cursor (no crash)', () => {
+      const page = store.listEntitiesPage(projectId, { limit: 5, cursor: 'not-a-cursor' });
+      expect(page.items.length).toBe(5);
+    });
+
+    it('respects type filter alongside cursor', () => {
+      store.addEntity({ name: 'Decision1', type: 'decision', projectId });
+      const page = store.listEntitiesPage(projectId, { type: 'decision', limit: 50 });
+      expect(page.items.every(e => e.type === 'decision')).toBe(true);
+    });
+  });
+
+  describe('listIssuesPage cursor pagination', () => {
+    beforeEach(() => {
+      for (let i = 0; i < 9; i++) {
+        store.addIssue({ projectId, type: 'bug', title: `Issue ${i}` });
+      }
+    });
+
+    it('walks all issues via cursor without duplicates', () => {
+      const seen = new Set<string>();
+      let cursor: string | null | undefined = undefined;
+      let pages = 0;
+      while (true) {
+        const page = store.listIssuesPage(projectId, { limit: 3, cursor });
+        for (const i of page.items) seen.add(i.id);
+        pages++;
+        if (!page.nextCursor || pages > 10) break;
+        cursor = page.nextCursor;
+      }
+      expect(seen.size).toBe(9);
+    });
+
+    it('combines status filter with cursor', () => {
+      store.updateIssue(store.listIssues(projectId)[0].id, { status: 'resolved' });
+      const open = store.listIssuesPage(projectId, { status: 'open', limit: 50 });
+      expect(open.items.every(i => i.status === 'open')).toBe(true);
+      expect(open.items.length).toBe(8);
+    });
+  });
 });
