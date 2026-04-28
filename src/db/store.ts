@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { Entity, Relation, Observation, Project, GraphSummary, FileDigest, StalenessResult, Issue, Session, SessionEvent, Rule, Lesson, Snapshot } from '../types.js';
+import { encodeCursor, decodeCursor, type Page } from './pagination.js';
 
 function now(): string {
   return new Date().toISOString();
@@ -1103,5 +1104,100 @@ export class KnowledgeStore {
       rules: data.rules?.length ?? 0,
       lessons: data.lessons?.length ?? 0,
     };
+  }
+
+  // --- Cursor-based pagination ---
+  //
+  // These return Page<T> with an opaque nextCursor. Use them on lists that
+  // can grow beyond ~10k rows (entities, issues). Existing offset/limit
+  // methods remain for back-compat and small lists.
+
+  listEntitiesPage(
+    projectId: string | null | undefined,
+    opts: { type?: string; limit?: number; cursor?: string | null } = {},
+  ): Page<Entity> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const params: unknown[] = [];
+    let sql = 'SELECT * FROM entities WHERE 1=1';
+
+    if (projectId !== undefined) {
+      if (projectId === null) {
+        sql += ' AND project_id IS NULL';
+      } else {
+        sql += ' AND (project_id = ? OR project_id IS NULL)';
+        params.push(projectId);
+      }
+    }
+    if (opts.type) {
+      sql += ' AND type = ?';
+      params.push(opts.type);
+    }
+
+    if (opts.cursor) {
+      const c = decodeCursor(opts.cursor);
+      if (c) {
+        // Row value comparison — SQLite compares lexicographically, so this
+        // implements (updated_at, id) < (?, ?) which keeps ordering stable
+        // across rows that share the same updated_at.
+        sql += ' AND (updated_at, id) < (?, ?)';
+        params.push(c.ts, c.id);
+      }
+    }
+
+    // Fetch limit+1 so we know whether more rows exist without a COUNT.
+    sql += ' ORDER BY updated_at DESC, id DESC LIMIT ?';
+    params.push(limit + 1);
+
+    const rows = (this.db.prepare(sql).all(...params) as Record<string, unknown>[]).map(toEntity);
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor = hasMore && last
+      ? encodeCursor({ ts: last.updatedAt, id: last.id })
+      : null;
+    return { items, nextCursor };
+  }
+
+  listIssuesPage(
+    projectId: string,
+    opts: {
+      type?: string;
+      severity?: string;
+      status?: string;
+      entityId?: string;
+      filePath?: string;
+      limit?: number;
+      cursor?: string | null;
+    } = {},
+  ): Page<Issue> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const params: unknown[] = [projectId];
+    let sql = 'SELECT * FROM issues WHERE project_id = ?';
+
+    if (opts.type) { sql += ' AND type = ?'; params.push(opts.type); }
+    if (opts.severity) { sql += ' AND severity = ?'; params.push(opts.severity); }
+    if (opts.status) { sql += ' AND status = ?'; params.push(opts.status); }
+    if (opts.entityId) { sql += ' AND entity_id = ?'; params.push(opts.entityId); }
+    if (opts.filePath) { sql += ' AND file_path = ?'; params.push(opts.filePath); }
+
+    if (opts.cursor) {
+      const c = decodeCursor(opts.cursor);
+      if (c) {
+        sql += ' AND (created_at, id) < (?, ?)';
+        params.push(c.ts, c.id);
+      }
+    }
+
+    sql += ' ORDER BY created_at DESC, id DESC LIMIT ?';
+    params.push(limit + 1);
+
+    const rows = (this.db.prepare(sql).all(...params) as Record<string, unknown>[]).map(toIssue);
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor = hasMore && last
+      ? encodeCursor({ ts: last.createdAt, id: last.id })
+      : null;
+    return { items, nextCursor };
   }
 }
