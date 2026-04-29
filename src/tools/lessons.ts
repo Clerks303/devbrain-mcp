@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
 import { tryEmbed } from '../embeddings/try-embed.js';
+import { LESSON_OUTCOMES } from '../types.js';
 
 export function registerLessonTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -10,7 +11,7 @@ export function registerLessonTools(server: McpServer, brain: DevBrain): void {
     {
       trigger: z.string().describe('The situation/trigger that causes this lesson to apply'),
       action: z.string().describe('What to do when this situation occurs'),
-      outcome: z.enum(['positive', 'negative', 'neutral']).optional().describe('Whether this was a good or bad outcome (default: neutral)'),
+      outcome: z.enum(LESSON_OUTCOMES).optional().describe('Whether this was a good or bad outcome (default: neutral)'),
       metadata: z.record(z.unknown()).optional().describe('Additional metadata'),
     },
     async ({ trigger, action, outcome, metadata }) => {
@@ -96,7 +97,7 @@ export function registerLessonTools(server: McpServer, brain: DevBrain): void {
     'devbrain_list_lessons',
     'List lessons for the active project with optional filters',
     {
-      outcome: z.enum(['positive', 'negative', 'neutral']).optional().describe('Filter by outcome'),
+      outcome: z.enum(LESSON_OUTCOMES).optional().describe('Filter by outcome'),
       min_confidence: z.number().min(0).max(1).optional().describe('Minimum confidence threshold'),
       limit: z.number().min(1).max(500).optional().describe('Max number of results (default 100)'),
       offset: z.number().min(0).optional().describe('Number of results to skip (default 0)'),
