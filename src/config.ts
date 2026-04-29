@@ -71,6 +71,27 @@ function inferProvider(openaiApiKey?: string): DevBrainConfig['embeddingProvider
   return 'ollama';
 }
 
+/**
+ * Parse a positive integer from an env var, returning undefined on:
+ *   - missing/empty string
+ *   - NaN (e.g. parseInt("abc"))
+ *   - non-positive value
+ *
+ * parseInt is permissive — `parseInt("abc")` returns NaN, which then silently
+ * propagates through `?? fallback` (NaN is not nullish) and ends up as the
+ * embedding dimension or port, breaking SQLite (vec0 dim must be > 0) or
+ * leaving the server bound to NaN. Validate up front and warn the user.
+ */
+function parsePositiveIntEnv(name: string, raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.error(`Warning: ${name}="${raw}" is not a positive integer, ignoring.`);
+    return undefined;
+  }
+  return parsed;
+}
+
 export function loadConfig(): DevBrainConfig {
   const fileConfig = readConfigFile();
 
@@ -110,9 +131,7 @@ export function loadConfig(): DevBrainConfig {
       : inferProvider(openaiApiKey);
 
   const embeddingDimension =
-    (process.env.DEVBRAIN_EMBEDDING_DIMENSION
-      ? parseInt(process.env.DEVBRAIN_EMBEDDING_DIMENSION, 10)
-      : undefined) ??
+    parsePositiveIntEnv('DEVBRAIN_EMBEDDING_DIMENSION', process.env.DEVBRAIN_EMBEDDING_DIMENSION) ??
     fileConfig.embeddingDimension ??
     DIMENSION_BY_PROVIDER[embeddingProvider] ??
     1536;
@@ -125,15 +144,11 @@ export function loadConfig(): DevBrainConfig {
     rawTransport && isValidTransport(rawTransport) ? rawTransport : 'stdio';
 
   const port =
-    (process.env.DEVBRAIN_PORT
-      ? parseInt(process.env.DEVBRAIN_PORT, 10)
-      : undefined) ??
+    parsePositiveIntEnv('DEVBRAIN_PORT', process.env.DEVBRAIN_PORT) ??
     fileConfig.port;
 
   const hookPort =
-    (process.env.DEVBRAIN_HOOK_PORT
-      ? parseInt(process.env.DEVBRAIN_HOOK_PORT, 10)
-      : undefined) ??
+    parsePositiveIntEnv('DEVBRAIN_HOOK_PORT', process.env.DEVBRAIN_HOOK_PORT) ??
     fileConfig.hookPort ??
     7384;
 

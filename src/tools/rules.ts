@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
 
 export function registerRuleTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -27,12 +28,8 @@ export function registerRuleTools(server: McpServer, brain: DevBrain): void {
         metadata: metadata ?? null,
       });
 
-      try {
-        const embedding = await brain.embeddingProvider.embed(content);
-        brain.vectorStore.upsertRuleEmbedding(rule.id, embedding);
-      } catch (e) {
-        console.error('Failed to generate rule embedding:', e);
-      }
+      const embedding = await tryEmbed(brain.embeddingProvider, content, 'rule:add');
+      if (embedding) brain.vectorStore.upsertRuleEmbedding(rule.id, embedding);
 
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(rule, null, 2) }],
@@ -85,12 +82,8 @@ export function registerRuleTools(server: McpServer, brain: DevBrain): void {
       const rule = brain.store.updateRule(id, { content, severity, scope, pattern });
 
       if (content !== undefined) {
-        try {
-          const embedding = await brain.embeddingProvider.embed(rule.content);
-          brain.vectorStore.upsertRuleEmbedding(rule.id, embedding);
-        } catch (e) {
-          console.error('Failed to update rule embedding:', e);
-        }
+        const embedding = await tryEmbed(brain.embeddingProvider, rule.content, 'rule:update');
+        if (embedding) brain.vectorStore.upsertRuleEmbedding(rule.id, embedding);
       }
 
       return {

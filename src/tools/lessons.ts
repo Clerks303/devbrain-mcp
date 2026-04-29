@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
 
 export function registerLessonTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -26,12 +27,8 @@ export function registerLessonTools(server: McpServer, brain: DevBrain): void {
       });
 
       const text = `${trigger}: ${action}`;
-      try {
-        const embedding = await brain.embeddingProvider.embed(text);
-        brain.vectorStore.upsertLessonEmbedding(lesson.id, embedding);
-      } catch (e) {
-        console.error('Failed to generate lesson embedding:', e);
-      }
+      const embedding = await tryEmbed(brain.embeddingProvider, text, 'lesson:add');
+      if (embedding) brain.vectorStore.upsertLessonEmbedding(lesson.id, embedding);
 
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(lesson, null, 2) }],
