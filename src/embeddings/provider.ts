@@ -4,6 +4,7 @@ export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
   embedBatch(texts: string[]): Promise<number[][]>;
   readonly dimension: number;
+  readonly isNoOp?: boolean;
 }
 
 export async function createEmbeddingProvider(config?: DevBrainConfig): Promise<EmbeddingProvider> {
@@ -50,16 +51,20 @@ export async function createEmbeddingProvider(config?: DevBrainConfig): Promise<
 
 class NoOpEmbeddingProvider implements EmbeddingProvider {
   readonly dimension: number;
+  readonly isNoOp = true;
 
   constructor(dimension: number = 1536) {
     this.dimension = dimension;
   }
 
+  // Returns an empty vector. Callers (VectorStore.upsert*, hybrid search)
+  // detect length === 0 and skip vector indexing / KNN lookup.
+  // Avoids polluting cosine KNN with zero vectors that all sit at distance 1.
   async embed(_text: string): Promise<number[]> {
-    return new Array(this.dimension).fill(0);
+    return [];
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {
-    return texts.map(() => new Array(this.dimension).fill(0));
+    return texts.map(() => []);
   }
 }

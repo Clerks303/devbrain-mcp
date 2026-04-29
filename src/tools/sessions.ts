@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
 import { getAutoContext } from '../graph/context-auto.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
+import { SESSION_EVENT_TYPES } from '../types.js';
 
 export function registerSessionTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -18,12 +20,8 @@ export function registerSessionTools(server: McpServer, brain: DevBrain): void {
       const session = brain.store.startSession({ projectId: brain.activeProjectId, goal });
       brain.activeSessionId = session.id;
 
-      try {
-        const embedding = await brain.embeddingProvider.embed(goal);
-        brain.vectorStore.upsertSessionEmbedding(session.id, embedding);
-      } catch (e) {
-        console.error('Failed to generate session embedding:', e);
-      }
+      const embedding = await tryEmbed(brain.embeddingProvider, goal, 'session:start');
+      if (embedding) brain.vectorStore.upsertSessionEmbedding(session.id, embedding);
 
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(session, null, 2) }],
@@ -49,14 +47,9 @@ export function registerSessionTools(server: McpServer, brain: DevBrain): void {
         brain.activeSessionId = null;
       }
 
-      // Re-embed with summary for better future search
       const text = [session.goal, summary].filter(Boolean).join(' — ');
-      try {
-        const embedding = await brain.embeddingProvider.embed(text);
-        brain.vectorStore.upsertSessionEmbedding(session.id, embedding);
-      } catch (e) {
-        console.error('Failed to update session embedding:', e);
-      }
+      const embedding = await tryEmbed(brain.embeddingProvider, text, 'session:end');
+      if (embedding) brain.vectorStore.upsertSessionEmbedding(session.id, embedding);
 
       // Trigger learning engine non-blockingly
       if (brain.learningOrchestrator) {
@@ -81,7 +74,7 @@ export function registerSessionTools(server: McpServer, brain: DevBrain): void {
     'Log an event in the current session (tool call, decision, discovery, or error)',
     {
       session_id: z.string().describe('Session ID to log event in'),
-      type: z.enum(['tool_call', 'decision', 'discovery', 'error']).describe('Event type'),
+      type: z.enum(SESSION_EVENT_TYPES).describe('Event type'),
       content: z.string().describe('Event description'),
       tool_name: z.string().optional().describe('Tool name (for tool_call events)'),
     },
@@ -179,10 +172,8 @@ export function registerSessionTools(server: McpServer, brain: DevBrain): void {
       // 2. Start session
       const session = brain.store.startSession({ projectId: project.id, goal });
       brain.activeSessionId = session.id;
-      try {
-        const embedding = await brain.embeddingProvider.embed(goal);
-        brain.vectorStore.upsertSessionEmbedding(session.id, embedding);
-      } catch { /* ignore */ }
+      const embedding = await tryEmbed(brain.embeddingProvider, goal, 'session:quick-start');
+      if (embedding) brain.vectorStore.upsertSessionEmbedding(session.id, embedding);
 
       // 3. Get auto context
       const query = context_query ?? goal;
@@ -212,7 +203,9 @@ export function registerSessionTools(server: McpServer, brain: DevBrain): void {
           sections.push(`## Last Session\n- Goal: ${s.goal}${s.summary ? `\n- Summary: ${s.summary}` : ''}`);
         }
         if (sections.length > 0) contextReport = sections.join('\n\n');
-      } catch { /* context failure is non-fatal */ }
+      } catch (err) {
+        console.error(`[quick-start:auto-context] ${err instanceof Error ? err.message : String(err)}`);
+      }
 
       return {
         content: [{

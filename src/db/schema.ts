@@ -64,6 +64,23 @@ function createVecTables(db: Database.Database, dimension: number): void {
   }
 }
 
+export class EmbeddingDimensionMismatchError extends Error {
+  constructor(
+    public readonly storedDimension: number,
+    public readonly requestedDimension: number,
+  ) {
+    super(
+      `Embedding dimension mismatch: database was built with ${storedDimension}-dim vectors, ` +
+      `but the current configuration requests ${requestedDimension}-dim. ` +
+      `Recreating vec0 tables would PERMANENTLY DELETE existing embeddings. ` +
+      `To proceed anyway, set DEVBRAIN_ALLOW_EMBEDDING_RECREATE=1 (then run ` +
+      `devbrain_reindex_embeddings to repopulate). To preserve embeddings, ` +
+      `revert the embedding provider/model so the dimension matches ${storedDimension}.`,
+    );
+    this.name = 'EmbeddingDimensionMismatchError';
+  }
+}
+
 export function initDatabase(dbPath: string, embeddingDimension: number = 1536): Database.Database {
   ensureDir(path.dirname(dbPath));
   const db = new Database(dbPath);
@@ -122,6 +139,10 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     CREATE INDEX IF NOT EXISTS idx_entities_project ON entities(project_id);
     CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
     CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
+    -- Cursor pagination on listEntitiesPage uses ORDER BY updated_at DESC, id DESC
+    -- with row-value WHERE (updated_at, id) < (?, ?). Composite covers both.
+    CREATE INDEX IF NOT EXISTS idx_entities_project_updated_id
+      ON entities(project_id, updated_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id);
     CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id);
     CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(type);
@@ -167,6 +188,9 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     CREATE INDEX IF NOT EXISTS idx_issues_project_status ON issues(project_id, status);
     CREATE INDEX IF NOT EXISTS idx_issues_project_type ON issues(project_id, type);
     CREATE INDEX IF NOT EXISTS idx_issues_entity ON issues(entity_id);
+    -- Cursor pagination on listIssuesPage uses ORDER BY created_at DESC, id DESC
+    CREATE INDEX IF NOT EXISTS idx_issues_project_created_id
+      ON issues(project_id, created_at DESC, id DESC);
 
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
@@ -392,6 +416,18 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     // FTS5 may already exist or not be available
   }
 
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS lessons_fts USING fts5(
+        trigger_text, action,
+        content='lessons',
+        content_rowid='rowid'
+      );
+    `);
+  } catch {
+    // FTS5 may already exist or not be available
+  }
+
   // FTS5 sync triggers for entities
   try {
     db.exec(`
@@ -436,13 +472,57 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     // triggers may already exist
   }
 
-  // Handle embedding dimension changes
+  // FTS5 sync triggers for lessons
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS lessons_fts_insert AFTER INSERT ON lessons BEGIN
+        INSERT INTO lessons_fts(rowid, trigger_text, action) VALUES (NEW.rowid, NEW.trigger_text, NEW.action);
+      END;
+    `);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS lessons_fts_delete AFTER DELETE ON lessons BEGIN
+        INSERT INTO lessons_fts(lessons_fts, rowid, trigger_text, action) VALUES ('delete', OLD.rowid, OLD.trigger_text, OLD.action);
+      END;
+    `);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS lessons_fts_update AFTER UPDATE ON lessons BEGIN
+        INSERT INTO lessons_fts(lessons_fts, rowid, trigger_text, action) VALUES ('delete', OLD.rowid, OLD.trigger_text, OLD.action);
+        INSERT INTO lessons_fts(rowid, trigger_text, action) VALUES (NEW.rowid, NEW.trigger_text, NEW.action);
+      END;
+    `);
+  } catch {
+    // triggers may already exist
+  }
+
+  // One-time backfill of lessons_fts for pre-existing rows (idempotent via meta flag).
+  // Without this, DBs created before lessons_fts existed would have empty FTS.
+  try {
+    const flag = db.prepare("SELECT value FROM meta WHERE key = 'lessons_fts_backfilled'").get() as { value: string } | undefined;
+    if (!flag) {
+      db.exec("INSERT INTO lessons_fts(lessons_fts) VALUES('rebuild')");
+      db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('lessons_fts_backfilled', '1')").run();
+    }
+  } catch {
+    // FTS5 may not be available — backfill skipped
+  }
+
+  // Handle embedding dimension changes — opt-in destruction.
+  // Default behavior changed from silent DROP to throw, to prevent surprise
+  // data loss when a user switches providers (openai 1536 ↔ ollama 768).
+  // Set DEVBRAIN_ALLOW_EMBEDDING_RECREATE=1 to allow the destructive recreate.
   const storedDimension = getStoredDimension(db);
 
   if (storedDimension !== null && storedDimension !== embeddingDimension) {
+    const allowRecreate = process.env.DEVBRAIN_ALLOW_EMBEDDING_RECREATE === '1';
+    if (!allowRecreate) {
+      db.close();
+      throw new EmbeddingDimensionMismatchError(storedDimension, embeddingDimension);
+    }
     console.error(
-      `Warning: Embedding dimension changed from ${storedDimension} to ${embeddingDimension}. ` +
-      `Dropping and recreating vec0 tables. Existing embeddings will be lost.`
+      `Warning: DEVBRAIN_ALLOW_EMBEDDING_RECREATE=1 is set. ` +
+      `Embedding dimension changed from ${storedDimension} to ${embeddingDimension}. ` +
+      `Dropping and recreating vec0 tables. Existing embeddings will be lost. ` +
+      `Run devbrain_reindex_embeddings after restart to repopulate.`,
     );
     recreateVecTables(db, embeddingDimension);
   } else {

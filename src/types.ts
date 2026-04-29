@@ -1,3 +1,43 @@
+// --- Centralized enum constants ---
+//
+// Each of these `as const` arrays is the single source of truth for a string
+// union. Tools (Zod schemas) and types both derive from the same array via
+// `typeof X[number]`, so adding a value updates validation and types together.
+// Don't redeclare these literal unions inline elsewhere.
+
+export const ENTITY_STATUSES = ['active', 'deprecated', 'experimental', 'stable', 'unknown'] as const;
+export type EntityStatus = typeof ENTITY_STATUSES[number];
+
+export const FILE_STATUSES = ['active', 'deprecated', 'draft', 'deleted'] as const;
+export type FileStatus = typeof FILE_STATUSES[number];
+
+export const ISSUE_TYPES = ['bug', 'debt', 'todo', 'improvement'] as const;
+export type IssueType = typeof ISSUE_TYPES[number];
+
+export const ISSUE_SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
+export type IssueSeverity = typeof ISSUE_SEVERITIES[number];
+
+export const ISSUE_STATUSES = ['open', 'in_progress', 'resolved', 'wontfix'] as const;
+export type IssueStatus = typeof ISSUE_STATUSES[number];
+
+export const SESSION_EVENT_TYPES = ['tool_call', 'decision', 'discovery', 'error'] as const;
+export type SessionEventType = typeof SESSION_EVENT_TYPES[number];
+
+export const RULE_SCOPES = ['global', 'file_pattern', 'entity_type'] as const;
+export type RuleScope = typeof RULE_SCOPES[number];
+
+export const RULE_SEVERITIES = ['must', 'should', 'prefer'] as const;
+export type RuleSeverity = typeof RULE_SEVERITIES[number];
+
+export const LESSON_OUTCOMES = ['positive', 'negative', 'neutral'] as const;
+export type LessonOutcome = typeof LESSON_OUTCOMES[number];
+
+export const OBSERVATION_CATEGORIES = ['note', 'implementation', 'caveat', 'todo'] as const;
+export type ObservationCategory = typeof OBSERVATION_CATEGORIES[number];
+
+export const PROPOSAL_STATUSES = ['pending', 'accepted', 'rejected'] as const;
+export type ProposalStatus = typeof PROPOSAL_STATUSES[number];
+
 export interface Entity {
   id: string;
   name: string;
@@ -90,7 +130,7 @@ export interface Session {
 export interface SessionEvent {
   id: string;
   sessionId: string;
-  type: 'tool_call' | 'decision' | 'discovery' | 'error';
+  type: SessionEventType;
   content: string;
   toolName: string | null;
   metadata: Record<string, unknown> | null;
@@ -100,10 +140,10 @@ export interface SessionEvent {
 export interface Rule {
   id: string;
   projectId: string;
-  scope: 'global' | 'file_pattern' | 'entity_type';
+  scope: RuleScope;
   pattern: string | null;
   content: string;
-  severity: 'must' | 'should' | 'prefer';
+  severity: RuleSeverity;
   metadata: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
@@ -114,7 +154,7 @@ export interface Lesson {
   projectId: string;
   trigger: string;
   action: string;
-  outcome: 'positive' | 'negative' | 'neutral';
+  outcome: LessonOutcome;
   confidence: number;
   occurrences: number;
   metadata: Record<string, unknown> | null;
@@ -149,10 +189,17 @@ export interface ProjectVision {
   updatedAt: string;
 }
 
-export type GoalPriority = 'P0' | 'P1' | 'P2' | 'P3';
-export type GoalStatus = 'not_started' | 'in_progress' | 'done' | 'blocked';
-export type GoalEntityRole = 'implements' | 'blocks' | 'depends_on' | 'touches';
-export type GoalMissionOutcome = 'success' | 'partial' | 'failed';
+export const GOAL_PRIORITIES = ['P0', 'P1', 'P2', 'P3'] as const;
+export type GoalPriority = typeof GOAL_PRIORITIES[number];
+
+export const GOAL_STATUSES = ['not_started', 'in_progress', 'done', 'blocked'] as const;
+export type GoalStatus = typeof GOAL_STATUSES[number];
+
+export const GOAL_ENTITY_ROLES = ['implements', 'blocks', 'depends_on', 'touches'] as const;
+export type GoalEntityRole = typeof GOAL_ENTITY_ROLES[number];
+
+export const GOAL_MISSION_OUTCOMES = ['success', 'partial', 'failed'] as const;
+export type GoalMissionOutcome = typeof GOAL_MISSION_OUTCOMES[number];
 
 export interface Goal {
   id: string;

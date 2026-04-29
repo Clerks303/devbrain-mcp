@@ -34,6 +34,12 @@ export function evaluateRules(
   const rules = store.listRules(projectId);
   const proposals: RuleProposal[] = [];
 
+  // Hoisted out of the loop: project-wide pending list is identical for every rule.
+  // Use a Set for O(1) membership checks instead of re-scanning the array per rule.
+  const rulesWithPendingProposal = new Set(
+    learningStore.listProposals(projectId, 'pending').map(p => p.ruleId),
+  );
+
   for (const rule of rules) {
     // Skip auto-generated rules from being evolved further
     if (rule.metadata && (rule.metadata as Record<string, unknown>).auto_generated) continue;
@@ -44,8 +50,7 @@ export function evaluateRules(
     if (observance.sampleSize < LEARNING_SAFETY.MIN_SESSIONS_FOR_RULE_EVOLUTION) continue;
 
     // Check for existing pending proposal for this rule
-    const existingProposals = learningStore.listProposals(projectId, 'pending');
-    if (existingProposals.some(p => p.ruleId === rule.id)) continue;
+    if (rulesWithPendingProposal.has(rule.id)) continue;
 
     const proposal = generateProposal(rule, observance);
     if (proposal && pendingCount + proposals.length < LEARNING_SAFETY.MAX_PENDING_RULE_PROPOSALS) {

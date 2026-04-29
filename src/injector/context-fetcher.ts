@@ -103,7 +103,7 @@ function fetchEntities(
         const rows = db.prepare(`
           SELECT e.id, e.name, e.type, e.content, e.status
           FROM entities e
-          JOIN entities_fts ef ON e.id = ef.rowid
+          JOIN entities_fts ef ON e.rowid = ef.rowid
           WHERE ef.entities_fts MATCH ? AND e.project_id = ? AND e.status != 'archived'
           LIMIT 8
         `).all(ftsQuery, projectId) as Array<{ id: string; name: string; type: string; content: string | null; status: string }>;
@@ -180,9 +180,9 @@ function fetchLessons(
     if (!ftsQuery) return [];
 
     const rows = db.prepare(`
-      SELECT l.id, l.trigger, l.action, l.outcome, l.confidence
+      SELECT l.id, l.trigger_text AS trigger, l.action, l.outcome, l.confidence
       FROM lessons l
-      JOIN lessons_fts lf ON l.id = lf.rowid
+      JOIN lessons_fts lf ON l.rowid = lf.rowid
       WHERE lf.lessons_fts MATCH ? AND l.project_id = ? AND l.confidence >= 0.4
       LIMIT 5
     `).all(ftsQuery, projectId) as FetchedLesson[];
@@ -193,9 +193,9 @@ function fetchLessons(
     try {
       const term = searchTerms[0];
       return db.prepare(`
-        SELECT id, trigger, action, outcome, confidence FROM lessons
+        SELECT id, trigger_text AS trigger, action, outcome, confidence FROM lessons
         WHERE project_id = ? AND confidence >= 0.4
-          AND (trigger LIKE ? OR action LIKE ?)
+          AND (trigger_text LIKE ? OR action LIKE ?)
         LIMIT 5
       `).all(projectId, `%${term}%`, `%${term}%`) as FetchedLesson[];
     } catch {
