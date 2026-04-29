@@ -157,54 +157,89 @@ export function registerHealthTools(server: McpServer, brain: DevBrain): void {
         };
       }
 
-      const reindexed = { entities: 0, observations: 0, files: 0, rules: 0, lessons: 0 };
+      // Track per-category attempts/successes/failures so the user can tell
+      // a successful reindex from a silent embed-provider outage. Without
+      // this, the tool reports `reindexed: { entities: 12 }` even when 80%
+      // of calls 429'd — exactly the opposite of what a recovery tool
+      // should do.
+      type CategoryStats = { attempted: number; succeeded: number; failed: number };
+      const stats = {
+        entities: { attempted: 0, succeeded: 0, failed: 0 } as CategoryStats,
+        observations: { attempted: 0, succeeded: 0, failed: 0 } as CategoryStats,
+        files: { attempted: 0, succeeded: 0, failed: 0 } as CategoryStats,
+        rules: { attempted: 0, succeeded: 0, failed: 0 } as CategoryStats,
+        lessons: { attempted: 0, succeeded: 0, failed: 0 } as CategoryStats,
+      };
+      const errorSamples: string[] = [];
+      const captureError = (err: unknown): void => {
+        if (errorSamples.length < 5) errorSamples.push(String(err instanceof Error ? err.message : err));
+      };
 
       for (const e of entities) {
+        stats.entities.attempted++;
         try {
           const text = [e.name, e.content].filter(Boolean).join(': ');
           const embedding = await brain.embeddingProvider.embed(text);
           brain.vectorStore.upsertEntityEmbedding(e.id, embedding);
-          reindexed.entities++;
-        } catch { /* skip on error */ }
+          stats.entities.succeeded++;
+        } catch (err) { stats.entities.failed++; captureError(err); }
       }
 
       for (const e of entities) {
         for (const obs of brain.store.getObservations(e.id)) {
+          stats.observations.attempted++;
           try {
             const embedding = await brain.embeddingProvider.embed(obs.content);
             brain.vectorStore.upsertObservationEmbedding(obs.id, embedding);
-            reindexed.observations++;
-          } catch { /* skip */ }
+            stats.observations.succeeded++;
+          } catch (err) { stats.observations.failed++; captureError(err); }
         }
       }
 
       for (const f of files) {
+        stats.files.attempted++;
         try {
           const text = [f.path, f.summary].filter(Boolean).join(': ');
           const embedding = await brain.embeddingProvider.embed(text);
           brain.vectorStore.upsertFileDigestEmbedding(f.id, embedding);
-          reindexed.files++;
-        } catch { /* skip */ }
+          stats.files.succeeded++;
+        } catch (err) { stats.files.failed++; captureError(err); }
       }
 
       for (const r of rules) {
+        stats.rules.attempted++;
         try {
           const embedding = await brain.embeddingProvider.embed(r.content);
           brain.vectorStore.upsertRuleEmbedding(r.id, embedding);
-          reindexed.rules++;
-        } catch { /* skip */ }
+          stats.rules.succeeded++;
+        } catch (err) { stats.rules.failed++; captureError(err); }
       }
 
       for (const l of lessons) {
+        stats.lessons.attempted++;
         try {
           const embedding = await brain.embeddingProvider.embed(`${l.trigger} → ${l.action}`);
           brain.vectorStore.upsertLessonEmbedding(l.id, embedding);
-          reindexed.lessons++;
-        } catch { /* skip */ }
+          stats.lessons.succeeded++;
+        } catch (err) { stats.lessons.failed++; captureError(err); }
       }
 
+      const totalAttempted = Object.values(stats).reduce((s, c) => s + c.attempted, 0);
+      const totalFailed = Object.values(stats).reduce((s, c) => s + c.failed, 0);
+      // A repair tool that silently leaves >10% of items unindexed is worse
+      // than no tool — surface it as an error so the agent knows to retry.
+      const failureRatio = totalAttempted > 0 ? totalFailed / totalAttempted : 0;
+      const isError = failureRatio > 0.1;
+
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ reindexed }, null, 2) }],
+        content: [{ type: 'text' as const, text: JSON.stringify({
+          stats,
+          totalAttempted,
+          totalFailed,
+          failureRatio: Number(failureRatio.toFixed(3)),
+          errorSamples: errorSamples.length > 0 ? errorSamples : undefined,
+        }, null, 2) }],
+        isError,
       };
     },
   );
