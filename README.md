@@ -50,11 +50,18 @@ for context.
 
 ## Install
 
+DevBrain isn't on npm yet — install from source:
+
 ```bash
-npm i -g devbrain-mcp
+git clone https://github.com/Clerks303/devbrain-mcp.git
+cd devbrain-mcp
+npm install
+npm run build
+npm link            # exposes `devbrain-mcp` on your PATH
 ```
 
-This installs the `devbrain-mcp` binary on your `PATH`.
+`npm link` makes the `devbrain-mcp` binary globally available so MCP clients
+(Claude Desktop, Claude Code) can spawn it by name.
 
 ## Quick start
 
@@ -121,15 +128,15 @@ otherwise you can set `DEVBRAIN_SCRIPT_PATH` to point at a local checkout's
 ## Development
 
 ```bash
-git clone <repo>
-cd devbrain
+git clone https://github.com/Clerks303/devbrain-mcp.git
+cd devbrain-mcp
 npm install
 npm run build
 npm test
 ```
 
 Tests use Vitest. Build output goes to `dist/`. `npm run build` also applies a
-shebang to binary entry points so `npm i -g` produces working CLI shims.
+shebang to binary entry points so `npm link` produces working CLI shims.
 
 ## License
 
