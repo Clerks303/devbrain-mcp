@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'node:fs';
 import { loadConfig } from '../src/config.js';
 
 describe('loadConfig', () => {
@@ -11,9 +12,14 @@ describe('loadConfig', () => {
         delete process.env[key];
       }
     }
+    // Hide the developer's real ~/.devbrain/config.json from the loader.
+    // Without this, a local config (with e.g. openaiApiKey set) leaks in and
+    // makes provider-inference assertions non-deterministic in dev environments.
+    vi.spyOn(fs, 'existsSync').mockReturnValue(false);
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     // Restore original env
     for (const key of Object.keys(process.env)) {
       if (key.startsWith('DEVBRAIN_') || key === 'OPENAI_API_KEY') {

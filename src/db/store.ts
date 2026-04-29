@@ -243,8 +243,9 @@ export class KnowledgeStore {
   }
 
   // Batch lookup helpers — eliminate N+1 in hybridSearch and other multi-hit
-  // paths. Each method does a single round-trip; callers are expected to
-  // chunk inputs above ~900 ids to stay under SQLite's variable limit.
+  // paths. Each method does a single round-trip. better-sqlite3 ships with
+  // SQLite ≥ 3.43 where SQLITE_MAX_VARIABLE_NUMBER is 32766, so chunking
+  // isn't needed in practice (current callers cap at hundreds of ids).
 
   getEntitiesByIds(
     ids: readonly string[],
@@ -1032,19 +1033,26 @@ export class KnowledgeStore {
     // limit (100), which would silently truncate large projects. Two N+1
     // loops over entities (relations + observations) collapsed into single
     // project-scoped queries.
+    //
+    // Strict project scoping: entities/relations/observations match
+    // `project_id = ?` only (not `OR project_id IS NULL`). Global entities
+    // (project_id NULL) belong to no project and would not round-trip
+    // cleanly — restoreSnapshot's pre-restore DELETE is also strict
+    // (`WHERE project_id = ?`), so including globals previously asymmetric.
+    // This aligns entity scoping with rules/issues/lessons (NOT NULL FKs).
     const entities = (this.db.prepare(
-      `SELECT * FROM entities WHERE (project_id = ? OR project_id IS NULL) ORDER BY updated_at DESC`,
+      `SELECT * FROM entities WHERE project_id = ? ORDER BY updated_at DESC`,
     ).all(projectId) as Record<string, unknown>[]).map(toEntity);
 
     const relations = (this.db.prepare(
       `SELECT * FROM relations WHERE from_entity_id IN (
-         SELECT id FROM entities WHERE project_id = ? OR project_id IS NULL
+         SELECT id FROM entities WHERE project_id = ?
        )`,
     ).all(projectId) as Record<string, unknown>[]).map(toRelation);
 
     const observations = (this.db.prepare(
       `SELECT * FROM observations WHERE entity_id IN (
-         SELECT id FROM entities WHERE project_id = ? OR project_id IS NULL
+         SELECT id FROM entities WHERE project_id = ?
        )`,
     ).all(projectId) as Record<string, unknown>[]).map(toObservation);
 
