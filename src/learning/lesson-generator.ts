@@ -151,8 +151,11 @@ async function checkDuplicateOrContradiction(
         return { isDuplicate: false, isContradiction: true };
       }
     }
-  } catch {
-    // If embedding fails, skip dedup check
+  } catch (err) {
+    // Embed failure → can't dedup; let the candidate through and log so the
+    // user can see the embedder is degraded (otherwise duplicates accumulate
+    // silently after an OpenAI outage).
+    console.error(`[learning:dedup-check] ${err instanceof Error ? err.message : String(err)}`);
   }
 
   return { isDuplicate: false, isContradiction: false };

@@ -37,3 +37,6 @@ npm-debug.log*
 
 # Coverage
 coverage/
+
+# Personal files (not for public repo)
+docs/INTERVIEW-DEVBRAIN.md

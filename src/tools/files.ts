@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
+import { FILE_STATUSES } from '../types.js';
 
 export function registerFileTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -14,7 +16,7 @@ export function registerFileTools(server: McpServer, brain: DevBrain): void {
       imports: z.array(z.string()).optional().describe('Imported modules/packages'),
       language: z.string().optional().describe('Programming language'),
       loc: z.number().optional().describe('Lines of code'),
-      status: z.enum(['active', 'deprecated', 'draft', 'deleted']).optional().describe('File status'),
+      status: z.enum(FILE_STATUSES).optional().describe('File status'),
       metadata: z.record(z.unknown()).optional().describe('Additional metadata'),
     },
     async ({ path, content_hash, summary, exports, imports, language, loc, status, metadata }) => {
@@ -35,15 +37,10 @@ export function registerFileTools(server: McpServer, brain: DevBrain): void {
         metadata: metadata ?? null,
       });
 
-      // Generate and store embedding
       if (summary || path) {
         const text = [path, summary].filter(Boolean).join(': ');
-        try {
-          const embedding = await brain.embeddingProvider.embed(text);
-          brain.vectorStore.upsertFileDigestEmbedding(digest.id, embedding);
-        } catch (e) {
-          console.error('Failed to generate file digest embedding:', e);
-        }
+        const embedding = await tryEmbed(brain.embeddingProvider, text, 'file:digest');
+        if (embedding) brain.vectorStore.upsertFileDigestEmbedding(digest.id, embedding);
       }
 
       return {
@@ -78,7 +75,7 @@ export function registerFileTools(server: McpServer, brain: DevBrain): void {
     'devbrain_list_files',
     'List all file digests for the active project',
     {
-      status: z.enum(['active', 'deprecated', 'draft', 'deleted']).optional().describe('Filter by file status'),
+      status: z.enum(FILE_STATUSES).optional().describe('Filter by file status'),
       language: z.string().optional().describe('Filter by programming language'),
       limit: z.number().min(1).max(500).optional().describe('Max number of results (default 100)'),
       offset: z.number().min(0).optional().describe('Number of results to skip (default 0)'),

@@ -1,6 +1,8 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { Entity, Relation, Observation, Project, GraphSummary, FileDigest, StalenessResult, Issue, Session, SessionEvent, Rule, Lesson, Snapshot } from '../types.js';
+import { encodeCursor, decodeCursor, type Page } from './pagination.js';
+import { SnapshotPayloadSchema, SnapshotCorruptedError } from './snapshot-schema.js';
 
 function now(): string {
   return new Date().toISOString();
@@ -238,6 +240,68 @@ export class KnowledgeStore {
 
   deleteEntity(id: string): void {
     this.db.prepare('DELETE FROM entities WHERE id = ?').run(id);
+  }
+
+  // Batch lookup helpers — eliminate N+1 in hybridSearch and other multi-hit
+  // paths. Each method does a single round-trip; callers are expected to
+  // chunk inputs above ~900 ids to stay under SQLite's variable limit.
+
+  getEntitiesByIds(
+    ids: readonly string[],
+    filters?: { projectId?: string | null; types?: readonly string[] },
+  ): Entity[] {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(',');
+    const params: unknown[] = [...ids];
+    let sql = `SELECT * FROM entities WHERE id IN (${placeholders})`;
+    if (filters?.projectId) {
+      sql += ' AND (project_id = ? OR project_id IS NULL)';
+      params.push(filters.projectId);
+    }
+    if (filters?.types && filters.types.length > 0) {
+      const typePlaceholders = filters.types.map(() => '?').join(',');
+      sql += ` AND type IN (${typePlaceholders})`;
+      params.push(...filters.types);
+    }
+    return (this.db.prepare(sql).all(...params) as Record<string, unknown>[]).map(toEntity);
+  }
+
+  getObservationsGroupedByEntityIds(entityIds: readonly string[]): Map<string, Observation[]> {
+    const grouped = new Map<string, Observation[]>();
+    if (entityIds.length === 0) return grouped;
+    const placeholders = entityIds.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT * FROM observations WHERE entity_id IN (${placeholders})`,
+    ).all(...entityIds) as Record<string, unknown>[];
+    for (const row of rows) {
+      const obs = toObservation(row);
+      const list = grouped.get(obs.entityId);
+      if (list) list.push(obs);
+      else grouped.set(obs.entityId, [obs]);
+    }
+    return grouped;
+  }
+
+  getObservationEntityIds(ids: readonly string[]): Map<string, string> {
+    const out = new Map<string, string>();
+    if (ids.length === 0) return out;
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT id, entity_id FROM observations WHERE id IN (${placeholders})`,
+    ).all(...ids) as { id: string; entity_id: string }[];
+    for (const r of rows) out.set(r.id, r.entity_id);
+    return out;
+  }
+
+  getIssueEntityIds(ids: readonly string[]): Map<string, string | null> {
+    const out = new Map<string, string | null>();
+    if (ids.length === 0) return out;
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT id, entity_id FROM issues WHERE id IN (${placeholders})`,
+    ).all(...ids) as { id: string; entity_id: string | null }[];
+    for (const r of rows) out.set(r.id, r.entity_id);
+    return out;
   }
 
   listEntities(projectId?: string | null, type?: string, limit: number = 100, offset: number = 0): Entity[] {
@@ -964,27 +1028,36 @@ export class KnowledgeStore {
     const id = randomUUID();
     const ts = now();
 
-    const entities = this.listEntities(projectId);
-    const relations: Relation[] = [];
-    for (const e of entities) {
-      relations.push(...this.getRelations(e.id, 'from'));
-    }
-    const observations: Observation[] = [];
-    for (const e of entities) {
-      observations.push(...this.getObservations(e.id));
-    }
+    // Snapshot the entire project — fetch without the listEntities default
+    // limit (100), which would silently truncate large projects. Two N+1
+    // loops over entities (relations + observations) collapsed into single
+    // project-scoped queries.
+    const entities = (this.db.prepare(
+      `SELECT * FROM entities WHERE (project_id = ? OR project_id IS NULL) ORDER BY updated_at DESC`,
+    ).all(projectId) as Record<string, unknown>[]).map(toEntity);
 
-    let fileDigests: FileDigest[] = [];
-    try { fileDigests = this.listFileDigests(projectId); } catch { /* table may not exist */ }
+    const relations = (this.db.prepare(
+      `SELECT * FROM relations WHERE from_entity_id IN (
+         SELECT id FROM entities WHERE project_id = ? OR project_id IS NULL
+       )`,
+    ).all(projectId) as Record<string, unknown>[]).map(toRelation);
 
-    let issues: Issue[] = [];
-    try { issues = this.listIssues(projectId); } catch { /* table may not exist */ }
+    const observations = (this.db.prepare(
+      `SELECT * FROM observations WHERE entity_id IN (
+         SELECT id FROM entities WHERE project_id = ? OR project_id IS NULL
+       )`,
+    ).all(projectId) as Record<string, unknown>[]).map(toObservation);
 
-    let rules: Rule[] = [];
-    try { rules = this.listRules(projectId); } catch { /* table may not exist */ }
-
-    let lessons: Lesson[] = [];
-    try { lessons = this.listLessons(projectId); } catch { /* table may not exist */ }
+    // These tables are always created by initDatabase(); a failure here is a real error
+    // (lock contention, schema drift, corruption). Swallowing it would silently produce
+    // an incomplete snapshot that, when later restored, would wipe live data with [].
+    // Override the default limit (100) with an effectively-unbounded one — a snapshot
+    // that silently drops the 101st rule on restore is a data-loss bug.
+    const SNAPSHOT_LIMIT = 1_000_000;
+    const fileDigests = this.listFileDigests(projectId, { limit: SNAPSHOT_LIMIT });
+    const issues = this.listIssues(projectId, { limit: SNAPSHOT_LIMIT });
+    const rules = this.listRules(projectId, undefined, SNAPSHOT_LIMIT);
+    const lessons = this.listLessons(projectId, { limit: SNAPSHOT_LIMIT });
 
     const data = JSON.stringify({ entities, relations, observations, fileDigests, issues, rules, lessons });
 
@@ -1023,14 +1096,23 @@ export class KnowledgeStore {
     const snap = this.db.prepare('SELECT data FROM snapshots WHERE id = ?').get(snapshotId) as { data: string } | undefined;
     if (!snap) throw new Error(`Snapshot not found: ${snapshotId}`);
 
-    const data = JSON.parse(snap.data) as {
-      entities?: Array<Record<string, unknown>>;
-      observations?: Array<Record<string, unknown>>;
-      relations?: Array<Record<string, unknown>>;
-      fileDigests?: Array<Record<string, unknown>>;
-      rules?: Array<Record<string, unknown>>;
-      lessons?: Array<Record<string, unknown>>;
-    };
+    // Parse + validate the payload before touching live data. The restore is a
+    // DELETE-then-INSERT cycle wrapped in a transaction; a malformed payload
+    // would silently insert NULLs (corrupting the project) or throw mid-way
+    // (rolling back, but only after the user already triggered a destructive op).
+    let rawData: unknown;
+    try {
+      rawData = JSON.parse(snap.data);
+    } catch (err) {
+      throw new SnapshotCorruptedError(snapshotId, [`payload is not valid JSON: ${(err as Error).message}`]);
+    }
+
+    const parsed = SnapshotPayloadSchema.safeParse(rawData);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.slice(0, 5).map(i => `${i.path.join('.')}: ${i.message}`);
+      throw new SnapshotCorruptedError(snapshotId, issues);
+    }
+    const data = parsed.data;
 
     const doRestore = this.db.transaction(() => {
       // DELETE in dependency order (CASCADE handles observations/relations from entities)
@@ -1044,7 +1126,7 @@ export class KnowledgeStore {
         this.db.prepare(`
           INSERT OR REPLACE INTO entities (id, name, type, project_id, content, metadata, status, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(e.id, e.name, e.type, e.projectId, e.content ?? null,
+        `).run(e.id, e.name, e.type, e.projectId ?? null, e.content ?? null,
                e.metadata ? JSON.stringify(e.metadata) : null, e.status ?? 'unknown',
                e.createdAt, e.updatedAt);
       }
@@ -1091,6 +1173,16 @@ export class KnowledgeStore {
                l.confidence ?? 0.5, l.occurrences ?? 1,
                l.metadata ? JSON.stringify(l.metadata) : null, l.createdAt, l.updatedAt);
       }
+
+      for (const i of data.issues ?? []) {
+        this.db.prepare(`
+          INSERT OR REPLACE INTO issues (id, project_id, entity_id, file_path, type, title, description, severity, status, resolution, metadata, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(i.id, i.projectId, i.entityId ?? null, i.filePath ?? null, i.type, i.title,
+               i.description ?? null, i.severity ?? 'medium', i.status ?? 'open',
+               i.resolution ?? null,
+               i.metadata ? JSON.stringify(i.metadata) : null, i.createdAt, i.updatedAt);
+      }
     });
 
     doRestore();
@@ -1100,8 +1192,104 @@ export class KnowledgeStore {
       observations: data.observations?.length ?? 0,
       relations: data.relations?.length ?? 0,
       fileDigests: data.fileDigests?.length ?? 0,
+      issues: data.issues?.length ?? 0,
       rules: data.rules?.length ?? 0,
       lessons: data.lessons?.length ?? 0,
     };
+  }
+
+  // --- Cursor-based pagination ---
+  //
+  // These return Page<T> with an opaque nextCursor. Use them on lists that
+  // can grow beyond ~10k rows (entities, issues). Existing offset/limit
+  // methods remain for back-compat and small lists.
+
+  listEntitiesPage(
+    projectId: string | null | undefined,
+    opts: { type?: string; limit?: number; cursor?: string | null } = {},
+  ): Page<Entity> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const params: unknown[] = [];
+    let sql = 'SELECT * FROM entities WHERE 1=1';
+
+    if (projectId !== undefined) {
+      if (projectId === null) {
+        sql += ' AND project_id IS NULL';
+      } else {
+        sql += ' AND (project_id = ? OR project_id IS NULL)';
+        params.push(projectId);
+      }
+    }
+    if (opts.type) {
+      sql += ' AND type = ?';
+      params.push(opts.type);
+    }
+
+    if (opts.cursor) {
+      const c = decodeCursor(opts.cursor);
+      if (c) {
+        // Row value comparison — SQLite compares lexicographically, so this
+        // implements (updated_at, id) < (?, ?) which keeps ordering stable
+        // across rows that share the same updated_at.
+        sql += ' AND (updated_at, id) < (?, ?)';
+        params.push(c.ts, c.id);
+      }
+    }
+
+    // Fetch limit+1 so we know whether more rows exist without a COUNT.
+    sql += ' ORDER BY updated_at DESC, id DESC LIMIT ?';
+    params.push(limit + 1);
+
+    const rows = (this.db.prepare(sql).all(...params) as Record<string, unknown>[]).map(toEntity);
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor = hasMore && last
+      ? encodeCursor({ ts: last.updatedAt, id: last.id })
+      : null;
+    return { items, nextCursor };
+  }
+
+  listIssuesPage(
+    projectId: string,
+    opts: {
+      type?: string;
+      severity?: string;
+      status?: string;
+      entityId?: string;
+      filePath?: string;
+      limit?: number;
+      cursor?: string | null;
+    } = {},
+  ): Page<Issue> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
+    const params: unknown[] = [projectId];
+    let sql = 'SELECT * FROM issues WHERE project_id = ?';
+
+    if (opts.type) { sql += ' AND type = ?'; params.push(opts.type); }
+    if (opts.severity) { sql += ' AND severity = ?'; params.push(opts.severity); }
+    if (opts.status) { sql += ' AND status = ?'; params.push(opts.status); }
+    if (opts.entityId) { sql += ' AND entity_id = ?'; params.push(opts.entityId); }
+    if (opts.filePath) { sql += ' AND file_path = ?'; params.push(opts.filePath); }
+
+    if (opts.cursor) {
+      const c = decodeCursor(opts.cursor);
+      if (c) {
+        sql += ' AND (created_at, id) < (?, ?)';
+        params.push(c.ts, c.id);
+      }
+    }
+
+    sql += ' ORDER BY created_at DESC, id DESC LIMIT ?';
+    params.push(limit + 1);
+
+    const rows = (this.db.prepare(sql).all(...params) as Record<string, unknown>[]).map(toIssue);
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor = hasMore && last
+      ? encodeCursor({ ts: last.createdAt, id: last.id })
+      : null;
+    return { items, nextCursor };
   }
 }

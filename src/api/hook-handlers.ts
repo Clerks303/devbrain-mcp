@@ -152,10 +152,16 @@ export async function handleSessionStart(
   const session = brain.store.startSession({ projectId: detected.id, goal });
   brain.activeSessionId = session.id;
 
-  // Embed session goal (non-blocking)
+  // Embed session goal (non-blocking). Failures are logged but don't
+  // abort session start — semantic search on this session goal will be
+  // unavailable until the next reindex.
   brain.embeddingProvider.embed(goal).then((embedding) => {
-    brain.vectorStore.upsertSessionEmbedding(session.id, embedding);
-  }).catch(() => { /* non-critical */ });
+    if (embedding.length > 0) {
+      brain.vectorStore.upsertSessionEmbedding(session.id, embedding);
+    }
+  }).catch((err) => {
+    console.error(`[hook:session-start:embed] ${err instanceof Error ? err.message : String(err)}`);
+  });
 
   // 5. Write current session file
   writeCurrentSession({
@@ -201,7 +207,12 @@ export async function handleSessionStart(
     if (sections.length > 0) {
       contextReport = sections.join('\n\n');
     }
-  } catch { /* context is non-critical */ }
+  } catch (err) {
+    // Auto-context is non-critical (session still starts), but the silent
+    // swallow used to mask Zod validation bugs and embed-provider outages
+    // for hours. Log so the failure is visible in MCP server logs.
+    console.error(`[hook:session-start:auto-context] ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   return {
     ok: true,
@@ -359,11 +370,16 @@ export async function handleSessionEnd(
     brain.activeSessionId = null;
   }
 
-  // Re-embed with summary for better future search
+  // Re-embed with summary for better future search. Failures logged but
+  // don't abort session end — search will use the older embedding.
   const text = [session.goal, summary].filter(Boolean).join(' — ');
   brain.embeddingProvider.embed(text).then((embedding) => {
-    brain.vectorStore.upsertSessionEmbedding(sessionId, embedding);
-  }).catch(() => { /* non-critical */ });
+    if (embedding.length > 0) {
+      brain.vectorStore.upsertSessionEmbedding(sessionId, embedding);
+    }
+  }).catch((err) => {
+    console.error(`[hook:session-end:embed] ${err instanceof Error ? err.message : String(err)}`);
+  });
 
   // Cleanup
   removeCurrentSession();

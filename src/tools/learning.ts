@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
 import { computeForgetConfidence } from '../learning/feedback-loop.js';
+import { PROPOSAL_STATUSES } from '../types.js';
 
 export function registerLearningTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -22,7 +23,7 @@ export function registerLearningTools(server: McpServer, brain: DevBrain): void 
     'devbrain_review_proposals',
     'List pending rule evolution proposals for the active project. Each proposal suggests a severity change (e.g., should → must).',
     {
-      status: z.enum(['pending', 'accepted', 'rejected']).optional().describe('Filter by status (default: pending)'),
+      status: z.enum(PROPOSAL_STATUSES).optional().describe('Filter by status (default: pending)'),
     },
     async ({ status }) => {
       if (!brain.activeProjectId) {

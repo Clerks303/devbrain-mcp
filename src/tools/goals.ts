@@ -16,12 +16,20 @@ import {
   unlinkGoalEntity,
   updateGoalStatus,
 } from '../db/goals-store.js';
-import type { Goal, GoalPriority, GoalStatus } from '../types.js';
+import {
+  GOAL_PRIORITIES,
+  GOAL_STATUSES,
+  GOAL_ENTITY_ROLES,
+  GOAL_MISSION_OUTCOMES,
+  type Goal,
+  type GoalPriority,
+  type GoalStatus,
+} from '../types.js';
 import { generateMissionContext } from '../graph/mission-context.js';
 
-const priorityEnum = z.enum(['P0', 'P1', 'P2', 'P3']);
-const statusEnum = z.enum(['not_started', 'in_progress', 'done', 'blocked']);
-const roleEnum = z.enum(['implements', 'blocks', 'depends_on', 'touches']);
+const priorityEnum = z.enum(GOAL_PRIORITIES);
+const statusEnum = z.enum(GOAL_STATUSES);
+const roleEnum = z.enum(GOAL_ENTITY_ROLES);
 
 function requireActiveProject(brain: DevBrain, projectId?: string | null): string | null {
   return projectId ?? brain.activeProjectId;
@@ -286,13 +294,16 @@ export function registerGoalTools(server: McpServer, brain: DevBrain): void {
         const entities = getGoalEntities(db, goal.id);
         const hasEntities = entities.length > 0;
 
-        // Semantic recall for lessons
         let hasLessons = false;
         try {
           const embedding = await brain.embeddingProvider.embed(goal.title);
-          const lessons = brain.vectorStore.searchLessons(embedding, 1);
-          hasLessons = lessons.length > 0;
-        } catch { /* ignore */ }
+          if (embedding.length > 0) {
+            const lessons = brain.vectorStore.searchLessons(embedding, 1);
+            hasLessons = lessons.length > 0;
+          }
+        } catch (err) {
+          console.error(`[goals:lesson-recall] ${err instanceof Error ? err.message : String(err)}`);
+        }
 
         scored.push(scoreGoalForNextAction(goal, parentDone, hasEntities, hasLessons));
       }
@@ -353,7 +364,7 @@ export function registerGoalTools(server: McpServer, brain: DevBrain): void {
     {
       goal_id: z.string().describe('Goal ID'),
       mission_id: z.string().describe('Mission identifier (external)'),
-      outcome: z.enum(['success', 'partial', 'failed']).optional(),
+      outcome: z.enum(GOAL_MISSION_OUTCOMES).optional(),
     },
     async ({ goal_id, mission_id, outcome }) => {
       const db = brain.store.getDb();

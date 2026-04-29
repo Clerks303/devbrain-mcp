@@ -1,16 +1,18 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
+import { RULE_SCOPES, RULE_SEVERITIES } from '../types.js';
 
 export function registerRuleTools(server: McpServer, brain: DevBrain): void {
   server.tool(
     'devbrain_add_rule',
     'Add a project rule or convention (coding style, architecture decisions, etc.)',
     {
-      scope: z.enum(['global', 'file_pattern', 'entity_type']).optional().describe('Rule scope (default: global)'),
+      scope: z.enum(RULE_SCOPES).optional().describe('Rule scope (default: global)'),
       pattern: z.string().optional().describe('Glob pattern for file_pattern scope, or type name for entity_type scope'),
       content: z.string().describe('The rule content'),
-      severity: z.enum(['must', 'should', 'prefer']).optional().describe('Rule severity (default: should)'),
+      severity: z.enum(RULE_SEVERITIES).optional().describe('Rule severity (default: should)'),
       metadata: z.record(z.unknown()).optional().describe('Additional metadata'),
     },
     async ({ scope, pattern, content, severity, metadata }) => {
@@ -27,12 +29,8 @@ export function registerRuleTools(server: McpServer, brain: DevBrain): void {
         metadata: metadata ?? null,
       });
 
-      try {
-        const embedding = await brain.embeddingProvider.embed(content);
-        brain.vectorStore.upsertRuleEmbedding(rule.id, embedding);
-      } catch (e) {
-        console.error('Failed to generate rule embedding:', e);
-      }
+      const embedding = await tryEmbed(brain.embeddingProvider, content, 'rule:add');
+      if (embedding) brain.vectorStore.upsertRuleEmbedding(rule.id, embedding);
 
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(rule, null, 2) }],
@@ -44,7 +42,7 @@ export function registerRuleTools(server: McpServer, brain: DevBrain): void {
     'devbrain_get_rules',
     'Get applicable rules for the current context (file path, entity type, or all)',
     {
-      scope: z.enum(['global', 'file_pattern', 'entity_type']).optional().describe('Filter by scope'),
+      scope: z.enum(RULE_SCOPES).optional().describe('Filter by scope'),
       file_path: z.string().optional().describe('File path to match against file_pattern rules'),
       entity_type: z.string().optional().describe('Entity type to match against entity_type rules'),
     },
@@ -77,20 +75,16 @@ export function registerRuleTools(server: McpServer, brain: DevBrain): void {
     {
       id: z.string().describe('Rule ID to update'),
       content: z.string().optional().describe('New rule content'),
-      severity: z.enum(['must', 'should', 'prefer']).optional().describe('New severity'),
-      scope: z.enum(['global', 'file_pattern', 'entity_type']).optional().describe('New scope'),
+      severity: z.enum(RULE_SEVERITIES).optional().describe('New severity'),
+      scope: z.enum(RULE_SCOPES).optional().describe('New scope'),
       pattern: z.string().optional().describe('New pattern'),
     },
     async ({ id, content, severity, scope, pattern }) => {
       const rule = brain.store.updateRule(id, { content, severity, scope, pattern });
 
       if (content !== undefined) {
-        try {
-          const embedding = await brain.embeddingProvider.embed(rule.content);
-          brain.vectorStore.upsertRuleEmbedding(rule.id, embedding);
-        } catch (e) {
-          console.error('Failed to update rule embedding:', e);
-        }
+        const embedding = await tryEmbed(brain.embeddingProvider, rule.content, 'rule:update');
+        if (embedding) brain.vectorStore.upsertRuleEmbedding(rule.id, embedding);
       }
 
       return {

@@ -10,6 +10,7 @@ import { evaluateRules } from './rule-evolver.js';
 import { inferFeedback, updateContextScores } from './context-ranker.js';
 import { updateProfile } from './developer-profile.js';
 import { validateLessons } from './feedback-loop.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
 
 /**
  * Orchestrates all learning modules.
@@ -175,11 +176,8 @@ export class LearningOrchestrator {
         metadata: { source: 'auto', generated_in_session: session.id },
       });
 
-      // Embed for future dedup
-      try {
-        const embedding = await this.embeddingProvider.embed(`${lesson.trigger} ${lesson.action}`);
-        this.vectorStore.upsertLessonEmbedding(created.id, embedding);
-      } catch { /* non-critical */ }
+      const embedding = await tryEmbed(this.embeddingProvider, `${lesson.trigger} ${lesson.action}`, 'learning:lesson-embed');
+      if (embedding) this.vectorStore.upsertLessonEmbedding(created.id, embedding);
     }
 
     return { generated: accepted.length, deduped, contradictions };
