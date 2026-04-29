@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
 import { tryEmbed } from '../embeddings/try-embed.js';
+import { ENTITY_STATUSES } from '../types.js';
 
 export function registerEntityTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -12,7 +13,7 @@ export function registerEntityTools(server: McpServer, brain: DevBrain): void {
       type: z.string().describe('Entity type: function, class, module, decision, pattern, convention, dependency, or custom'),
       content: z.string().optional().describe('Description or content of the entity'),
       metadata: z.record(z.unknown()).optional().describe('Additional metadata as key-value pairs'),
-      status: z.enum(['active', 'deprecated', 'experimental', 'stable', 'unknown']).optional().describe('Entity status'),
+      status: z.enum(ENTITY_STATUSES).optional().describe('Entity status'),
     },
     async ({ name, type, content, metadata, status }) => {
       const entity = brain.store.addEntity({
@@ -49,7 +50,7 @@ export function registerEntityTools(server: McpServer, brain: DevBrain): void {
       type: z.string().optional().describe('New type'),
       content: z.string().optional().describe('New content/description'),
       metadata: z.record(z.unknown()).optional().describe('New metadata (replaces existing)'),
-      status: z.enum(['active', 'deprecated', 'experimental', 'stable', 'unknown']).optional().describe('Entity status'),
+      status: z.enum(ENTITY_STATUSES).optional().describe('Entity status'),
     },
     async ({ id, name, type, content, metadata, status }) => {
       const entity = brain.store.updateEntity(id, {

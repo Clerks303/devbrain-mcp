@@ -75,22 +75,25 @@ export async function hybridSearch(
     const entityResults = vectorStore.searchEntities(queryEmbedding, limit * 2);
     entityResults.forEach((r, rank) => addRanked(acc, r.id, rank, 'entityVector'));
 
+    // Batch-resolve observation→entity in one query instead of N getObservation calls.
     const obsResults = vectorStore.searchObservations(queryEmbedding, limit);
-    obsResults.forEach((r, rank) => {
-      const obs = store.getObservation(r.id);
-      if (obs) addRanked(acc, obs.entityId, rank, 'observationVector');
-    });
+    if (obsResults.length > 0) {
+      const obsToEntity = store.getObservationEntityIds(obsResults.map(r => r.id));
+      obsResults.forEach((r, rank) => {
+        const eId = obsToEntity.get(r.id);
+        if (eId) addRanked(acc, eId, rank, 'observationVector');
+      });
+    }
 
     try {
       const issueResults = vectorStore.searchIssues(queryEmbedding, limit);
-      issueResults.forEach((r, rank) => {
-        try {
-          const issue = store.getIssue(r.id);
-          if (issue?.entityId) addRanked(acc, issue.entityId, rank, 'issueVector');
-        } catch {
-          // issue may have been deleted
-        }
-      });
+      if (issueResults.length > 0) {
+        const issueToEntity = store.getIssueEntityIds(issueResults.map(r => r.id));
+        issueResults.forEach((r, rank) => {
+          const eId = issueToEntity.get(r.id);
+          if (eId) addRanked(acc, eId, rank, 'issueVector');
+        });
+      }
     } catch {
       // issue_embeddings table may not exist yet
     }
@@ -101,26 +104,26 @@ export async function hybridSearch(
   const nameMatches = store.findEntitiesByName(query, options.projectId);
   nameMatches.forEach((entity, rank) => addRanked(acc, entity.id, rank, 'nameMatch'));
 
-  const results: HybridSearchResult[] = [];
-  for (const [entityId, { rrf, sources }] of acc) {
-    const entity = store.getEntity(entityId);
-    if (!entity) continue;
+  if (acc.size === 0) return [];
 
-    if (options.projectId && entity.projectId && entity.projectId !== options.projectId) {
-      continue;
-    }
-    if (options.types && options.types.length > 0 && !options.types.includes(entity.type)) {
-      continue;
-    }
+  // Batch-fetch entities (with project/type filtering at the SQL layer) and
+  // their observations in two queries instead of 2*N.
+  const entityIds = [...acc.keys()];
+  const entities = store.getEntitiesByIds(entityIds, {
+    projectId: options.projectId,
+    types: options.types,
+  });
+  const obsByEntity = store.getObservationsGroupedByEntityIds(entities.map(e => e.id));
 
-    const observations = store.getObservations(entityId);
-    results.push({
+  const results: HybridSearchResult[] = entities.map((entity) => {
+    const accEntry = acc.get(entity.id)!;
+    return {
       entity,
-      score: rrf,
-      matchType: classify(sources),
-      observations,
-    });
-  }
+      score: accEntry.rrf,
+      matchType: classify(accEntry.sources),
+      observations: obsByEntity.get(entity.id) ?? [],
+    };
+  });
 
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, limit);

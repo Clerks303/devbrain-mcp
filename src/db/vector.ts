@@ -13,20 +13,39 @@ function isEmpty(embedding: number[]): boolean {
 }
 
 export class VectorStore {
+  // Cache of (delete + insert) transactions per table. vec0 doesn't accept
+  // INSERT OR REPLACE, so we DELETE then INSERT. Wrapping the pair in a
+  // db.transaction makes it atomic — a process crash between the two
+  // statements used to leave the row absent and silently broke recall.
+  // The cache also avoids re-preparing statements on every embed call.
+  private readonly upsertTxCache = new Map<string, (id: string, blob: Buffer) => void>();
+
   constructor(private db: Database.Database) {}
 
-  upsertEntityEmbedding(id: string, embedding: number[]): void {
+  private getUpsertTx(table: string): (id: string, blob: Buffer) => void {
+    const cached = this.upsertTxCache.get(table);
+    if (cached) return cached;
+    const del = this.db.prepare(`DELETE FROM ${table} WHERE id = ?`);
+    const ins = this.db.prepare(`INSERT INTO ${table} (id, embedding) VALUES (?, ?)`);
+    const tx = this.db.transaction((id: string, blob: Buffer) => {
+      del.run(id);
+      ins.run(id, blob);
+    });
+    this.upsertTxCache.set(table, tx);
+    return tx;
+  }
+
+  private upsertEmbedding(table: string, id: string, embedding: number[]): void {
     if (isEmpty(embedding)) return;
-    const blob = vectorToBlob(embedding);
-    this.db.prepare('DELETE FROM entity_embeddings WHERE id = ?').run(id);
-    this.db.prepare('INSERT INTO entity_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
+    this.getUpsertTx(table)(id, vectorToBlob(embedding));
+  }
+
+  upsertEntityEmbedding(id: string, embedding: number[]): void {
+    this.upsertEmbedding('entity_embeddings', id, embedding);
   }
 
   upsertObservationEmbedding(id: string, embedding: number[]): void {
-    if (isEmpty(embedding)) return;
-    const blob = vectorToBlob(embedding);
-    this.db.prepare('DELETE FROM observation_embeddings WHERE id = ?').run(id);
-    this.db.prepare('INSERT INTO observation_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
+    this.upsertEmbedding('observation_embeddings', id, embedding);
   }
 
   searchEntities(queryEmbedding: number[], limit: number = 10): SearchResult[] {
@@ -64,10 +83,7 @@ export class VectorStore {
   // --- File Digest Embeddings ---
 
   upsertFileDigestEmbedding(id: string, embedding: number[]): void {
-    if (isEmpty(embedding)) return;
-    const blob = vectorToBlob(embedding);
-    this.db.prepare('DELETE FROM file_digest_embeddings WHERE id = ?').run(id);
-    this.db.prepare('INSERT INTO file_digest_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
+    this.upsertEmbedding('file_digest_embeddings', id, embedding);
   }
 
   searchFileDigests(queryEmbedding: number[], limit: number = 10): SearchResult[] {
@@ -89,10 +105,7 @@ export class VectorStore {
   // --- Issue Embeddings ---
 
   upsertIssueEmbedding(id: string, embedding: number[]): void {
-    if (isEmpty(embedding)) return;
-    const blob = vectorToBlob(embedding);
-    this.db.prepare('DELETE FROM issue_embeddings WHERE id = ?').run(id);
-    this.db.prepare('INSERT INTO issue_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
+    this.upsertEmbedding('issue_embeddings', id, embedding);
   }
 
   searchIssues(queryEmbedding: number[], limit: number = 10): SearchResult[] {
@@ -114,10 +127,7 @@ export class VectorStore {
   // --- Session Embeddings ---
 
   upsertSessionEmbedding(id: string, embedding: number[]): void {
-    if (isEmpty(embedding)) return;
-    const blob = vectorToBlob(embedding);
-    this.db.prepare('DELETE FROM session_embeddings WHERE id = ?').run(id);
-    this.db.prepare('INSERT INTO session_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
+    this.upsertEmbedding('session_embeddings', id, embedding);
   }
 
   searchSessions(queryEmbedding: number[], limit: number = 10): SearchResult[] {
@@ -138,10 +148,7 @@ export class VectorStore {
   // --- Rule Embeddings ---
 
   upsertRuleEmbedding(id: string, embedding: number[]): void {
-    if (isEmpty(embedding)) return;
-    const blob = vectorToBlob(embedding);
-    this.db.prepare('DELETE FROM rule_embeddings WHERE id = ?').run(id);
-    this.db.prepare('INSERT INTO rule_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
+    this.upsertEmbedding('rule_embeddings', id, embedding);
   }
 
   searchRules(queryEmbedding: number[], limit: number = 10): SearchResult[] {
@@ -162,10 +169,7 @@ export class VectorStore {
   // --- Lesson Embeddings ---
 
   upsertLessonEmbedding(id: string, embedding: number[]): void {
-    if (isEmpty(embedding)) return;
-    const blob = vectorToBlob(embedding);
-    this.db.prepare('DELETE FROM lesson_embeddings WHERE id = ?').run(id);
-    this.db.prepare('INSERT INTO lesson_embeddings (id, embedding) VALUES (?, ?)').run(id, blob);
+    this.upsertEmbedding('lesson_embeddings', id, embedding);
   }
 
   searchLessons(queryEmbedding: number[], limit: number = 10): SearchResult[] {

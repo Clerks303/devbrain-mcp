@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
 import { tryEmbed } from '../embeddings/try-embed.js';
+import { OBSERVATION_CATEGORIES } from '../types.js';
 
 export function registerObservationTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -11,7 +12,7 @@ export function registerObservationTools(server: McpServer, brain: DevBrain): vo
       entity_id: z.string().describe('Entity ID to attach the observation to'),
       content: z.string().describe('The observation content'),
       source: z.string().optional().describe('Source of the observation: user, agent, git, auto'),
-      category: z.enum(['note', 'implementation', 'caveat', 'todo']).optional().describe('Observation category (default: note)'),
+      category: z.enum(OBSERVATION_CATEGORIES).optional().describe('Observation category (default: note)'),
     },
     async ({ entity_id, content, source, category }) => {
       const entity = brain.store.getEntity(entity_id);

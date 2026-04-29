@@ -2,16 +2,17 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
 import { tryEmbed } from '../embeddings/try-embed.js';
+import { ISSUE_TYPES, ISSUE_SEVERITIES, ISSUE_STATUSES } from '../types.js';
 
 export function registerIssueTools(server: McpServer, brain: DevBrain): void {
   server.tool(
     'devbrain_report_issue',
     'Report a bug, debt, todo, or improvement in the knowledge graph',
     {
-      type: z.enum(['bug', 'debt', 'todo', 'improvement']).describe('Issue type'),
+      type: z.enum(ISSUE_TYPES).describe('Issue type'),
       title: z.string().describe('Issue title'),
       description: z.string().optional().describe('Detailed description'),
-      severity: z.enum(['critical', 'high', 'medium', 'low']).optional().describe('Issue severity (default: medium)'),
+      severity: z.enum(ISSUE_SEVERITIES).optional().describe('Issue severity (default: medium)'),
       entity_id: z.string().optional().describe('Related entity ID'),
       file_path: z.string().optional().describe('Related file path'),
       metadata: z.record(z.unknown()).optional().describe('Additional metadata'),
@@ -67,12 +68,12 @@ export function registerIssueTools(server: McpServer, brain: DevBrain): void {
       id: z.string().describe('Issue ID to update'),
       title: z.string().optional().describe('New title'),
       description: z.string().optional().describe('New description'),
-      severity: z.enum(['critical', 'high', 'medium', 'low']).optional().describe('New severity'),
-      status: z.enum(['open', 'in_progress', 'resolved', 'wontfix']).optional().describe('New status'),
+      severity: z.enum(ISSUE_SEVERITIES).optional().describe('New severity'),
+      status: z.enum(ISSUE_STATUSES).optional().describe('New status'),
       resolution: z.string().optional().describe('Resolution description'),
       entity_id: z.string().optional().describe('Related entity ID'),
       file_path: z.string().optional().describe('Related file path'),
-      type: z.enum(['bug', 'debt', 'todo', 'improvement']).optional().describe('New type'),
+      type: z.enum(ISSUE_TYPES).optional().describe('New type'),
       metadata: z.record(z.unknown()).optional().describe('New metadata'),
     },
     async ({ id, title, description, severity, status, resolution, entity_id, file_path, type, metadata }) => {
@@ -104,9 +105,9 @@ export function registerIssueTools(server: McpServer, brain: DevBrain): void {
     'devbrain_list_issues',
     'List issues for the active project with optional filters',
     {
-      type: z.enum(['bug', 'debt', 'todo', 'improvement']).optional().describe('Filter by issue type'),
-      severity: z.enum(['critical', 'high', 'medium', 'low']).optional().describe('Filter by severity'),
-      status: z.enum(['open', 'in_progress', 'resolved', 'wontfix']).optional().describe('Filter by status'),
+      type: z.enum(ISSUE_TYPES).optional().describe('Filter by issue type'),
+      severity: z.enum(ISSUE_SEVERITIES).optional().describe('Filter by severity'),
+      status: z.enum(ISSUE_STATUSES).optional().describe('Filter by status'),
       entity_id: z.string().optional().describe('Filter by related entity'),
       file_path: z.string().optional().describe('Filter by related file'),
       limit: z.number().min(1).max(500).optional().describe('Max number of results (default 100)'),

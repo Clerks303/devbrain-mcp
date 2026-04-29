@@ -139,6 +139,10 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     CREATE INDEX IF NOT EXISTS idx_entities_project ON entities(project_id);
     CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
     CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
+    -- Cursor pagination on listEntitiesPage uses ORDER BY updated_at DESC, id DESC
+    -- with row-value WHERE (updated_at, id) < (?, ?). Composite covers both.
+    CREATE INDEX IF NOT EXISTS idx_entities_project_updated_id
+      ON entities(project_id, updated_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_entity_id);
     CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_entity_id);
     CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(type);
@@ -184,6 +188,9 @@ export function initDatabase(dbPath: string, embeddingDimension: number = 1536):
     CREATE INDEX IF NOT EXISTS idx_issues_project_status ON issues(project_id, status);
     CREATE INDEX IF NOT EXISTS idx_issues_project_type ON issues(project_id, type);
     CREATE INDEX IF NOT EXISTS idx_issues_entity ON issues(entity_id);
+    -- Cursor pagination on listIssuesPage uses ORDER BY created_at DESC, id DESC
+    CREATE INDEX IF NOT EXISTS idx_issues_project_created_id
+      ON issues(project_id, created_at DESC, id DESC);
 
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,

@@ -242,6 +242,68 @@ export class KnowledgeStore {
     this.db.prepare('DELETE FROM entities WHERE id = ?').run(id);
   }
 
+  // Batch lookup helpers — eliminate N+1 in hybridSearch and other multi-hit
+  // paths. Each method does a single round-trip; callers are expected to
+  // chunk inputs above ~900 ids to stay under SQLite's variable limit.
+
+  getEntitiesByIds(
+    ids: readonly string[],
+    filters?: { projectId?: string | null; types?: readonly string[] },
+  ): Entity[] {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(',');
+    const params: unknown[] = [...ids];
+    let sql = `SELECT * FROM entities WHERE id IN (${placeholders})`;
+    if (filters?.projectId) {
+      sql += ' AND (project_id = ? OR project_id IS NULL)';
+      params.push(filters.projectId);
+    }
+    if (filters?.types && filters.types.length > 0) {
+      const typePlaceholders = filters.types.map(() => '?').join(',');
+      sql += ` AND type IN (${typePlaceholders})`;
+      params.push(...filters.types);
+    }
+    return (this.db.prepare(sql).all(...params) as Record<string, unknown>[]).map(toEntity);
+  }
+
+  getObservationsGroupedByEntityIds(entityIds: readonly string[]): Map<string, Observation[]> {
+    const grouped = new Map<string, Observation[]>();
+    if (entityIds.length === 0) return grouped;
+    const placeholders = entityIds.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT * FROM observations WHERE entity_id IN (${placeholders})`,
+    ).all(...entityIds) as Record<string, unknown>[];
+    for (const row of rows) {
+      const obs = toObservation(row);
+      const list = grouped.get(obs.entityId);
+      if (list) list.push(obs);
+      else grouped.set(obs.entityId, [obs]);
+    }
+    return grouped;
+  }
+
+  getObservationEntityIds(ids: readonly string[]): Map<string, string> {
+    const out = new Map<string, string>();
+    if (ids.length === 0) return out;
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT id, entity_id FROM observations WHERE id IN (${placeholders})`,
+    ).all(...ids) as { id: string; entity_id: string }[];
+    for (const r of rows) out.set(r.id, r.entity_id);
+    return out;
+  }
+
+  getIssueEntityIds(ids: readonly string[]): Map<string, string | null> {
+    const out = new Map<string, string | null>();
+    if (ids.length === 0) return out;
+    const placeholders = ids.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT id, entity_id FROM issues WHERE id IN (${placeholders})`,
+    ).all(...ids) as { id: string; entity_id: string | null }[];
+    for (const r of rows) out.set(r.id, r.entity_id);
+    return out;
+  }
+
   listEntities(projectId?: string | null, type?: string, limit: number = 100, offset: number = 0): Entity[] {
     let sql = 'SELECT * FROM entities WHERE 1=1';
     const params: unknown[] = [];
@@ -966,23 +1028,36 @@ export class KnowledgeStore {
     const id = randomUUID();
     const ts = now();
 
-    const entities = this.listEntities(projectId);
-    const relations: Relation[] = [];
-    for (const e of entities) {
-      relations.push(...this.getRelations(e.id, 'from'));
-    }
-    const observations: Observation[] = [];
-    for (const e of entities) {
-      observations.push(...this.getObservations(e.id));
-    }
+    // Snapshot the entire project — fetch without the listEntities default
+    // limit (100), which would silently truncate large projects. Two N+1
+    // loops over entities (relations + observations) collapsed into single
+    // project-scoped queries.
+    const entities = (this.db.prepare(
+      `SELECT * FROM entities WHERE (project_id = ? OR project_id IS NULL) ORDER BY updated_at DESC`,
+    ).all(projectId) as Record<string, unknown>[]).map(toEntity);
+
+    const relations = (this.db.prepare(
+      `SELECT * FROM relations WHERE from_entity_id IN (
+         SELECT id FROM entities WHERE project_id = ? OR project_id IS NULL
+       )`,
+    ).all(projectId) as Record<string, unknown>[]).map(toRelation);
+
+    const observations = (this.db.prepare(
+      `SELECT * FROM observations WHERE entity_id IN (
+         SELECT id FROM entities WHERE project_id = ? OR project_id IS NULL
+       )`,
+    ).all(projectId) as Record<string, unknown>[]).map(toObservation);
 
     // These tables are always created by initDatabase(); a failure here is a real error
     // (lock contention, schema drift, corruption). Swallowing it would silently produce
     // an incomplete snapshot that, when later restored, would wipe live data with [].
-    const fileDigests = this.listFileDigests(projectId);
-    const issues = this.listIssues(projectId);
-    const rules = this.listRules(projectId);
-    const lessons = this.listLessons(projectId);
+    // Override the default limit (100) with an effectively-unbounded one — a snapshot
+    // that silently drops the 101st rule on restore is a data-loss bug.
+    const SNAPSHOT_LIMIT = 1_000_000;
+    const fileDigests = this.listFileDigests(projectId, { limit: SNAPSHOT_LIMIT });
+    const issues = this.listIssues(projectId, { limit: SNAPSHOT_LIMIT });
+    const rules = this.listRules(projectId, undefined, SNAPSHOT_LIMIT);
+    const lessons = this.listLessons(projectId, { limit: SNAPSHOT_LIMIT });
 
     const data = JSON.stringify({ entities, relations, observations, fileDigests, issues, rules, lessons });
 

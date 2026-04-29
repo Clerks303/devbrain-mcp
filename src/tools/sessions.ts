@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
 import { getAutoContext } from '../graph/context-auto.js';
 import { tryEmbed } from '../embeddings/try-embed.js';
+import { SESSION_EVENT_TYPES } from '../types.js';
 
 export function registerSessionTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -73,7 +74,7 @@ export function registerSessionTools(server: McpServer, brain: DevBrain): void {
     'Log an event in the current session (tool call, decision, discovery, or error)',
     {
       session_id: z.string().describe('Session ID to log event in'),
-      type: z.enum(['tool_call', 'decision', 'discovery', 'error']).describe('Event type'),
+      type: z.enum(SESSION_EVENT_TYPES).describe('Event type'),
       content: z.string().describe('Event description'),
       tool_name: z.string().optional().describe('Tool name (for tool_call events)'),
     },
