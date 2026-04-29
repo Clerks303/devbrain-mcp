@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
 
 export function registerObservationTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -25,13 +26,8 @@ export function registerObservationTools(server: McpServer, brain: DevBrain): vo
         category,
       });
 
-      // Generate and store embedding for the observation
-      try {
-        const embedding = await brain.embeddingProvider.embed(content);
-        brain.vectorStore.upsertObservationEmbedding(observation.id, embedding);
-      } catch (e) {
-        console.error('Failed to generate observation embedding:', e);
-      }
+      const embedding = await tryEmbed(brain.embeddingProvider, content, 'observation:add');
+      if (embedding) brain.vectorStore.upsertObservationEmbedding(observation.id, embedding);
 
       if (brain.activeSessionId) {
         brain.store.updateSessionCounters(brain.activeSessionId, { entitiesModified: 1 });

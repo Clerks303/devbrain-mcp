@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
 
 export function registerIssueTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -31,14 +32,9 @@ export function registerIssueTools(server: McpServer, brain: DevBrain): void {
         metadata: metadata ?? null,
       });
 
-      // Generate and store embedding
       const text = [title, description].filter(Boolean).join(': ');
-      try {
-        const embedding = await brain.embeddingProvider.embed(text);
-        brain.vectorStore.upsertIssueEmbedding(issue.id, embedding);
-      } catch (e) {
-        console.error('Failed to generate issue embedding:', e);
-      }
+      const embedding = await tryEmbed(brain.embeddingProvider, text, 'issue:add');
+      if (embedding) brain.vectorStore.upsertIssueEmbedding(issue.id, embedding);
 
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(issue, null, 2) }],
@@ -92,15 +88,10 @@ export function registerIssueTools(server: McpServer, brain: DevBrain): void {
         metadata,
       });
 
-      // Re-embed if title or description changed
       if (title !== undefined || description !== undefined) {
         const text = [issue.title, issue.description].filter(Boolean).join(': ');
-        try {
-          const embedding = await brain.embeddingProvider.embed(text);
-          brain.vectorStore.upsertIssueEmbedding(issue.id, embedding);
-        } catch (e) {
-          console.error('Failed to generate issue embedding:', e);
-        }
+        const embedding = await tryEmbed(brain.embeddingProvider, text, 'issue:update');
+        if (embedding) brain.vectorStore.upsertIssueEmbedding(issue.id, embedding);
       }
 
       return {

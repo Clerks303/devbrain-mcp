@@ -286,13 +286,16 @@ export function registerGoalTools(server: McpServer, brain: DevBrain): void {
         const entities = getGoalEntities(db, goal.id);
         const hasEntities = entities.length > 0;
 
-        // Semantic recall for lessons
         let hasLessons = false;
         try {
           const embedding = await brain.embeddingProvider.embed(goal.title);
-          const lessons = brain.vectorStore.searchLessons(embedding, 1);
-          hasLessons = lessons.length > 0;
-        } catch { /* ignore */ }
+          if (embedding.length > 0) {
+            const lessons = brain.vectorStore.searchLessons(embedding, 1);
+            hasLessons = lessons.length > 0;
+          }
+        } catch (err) {
+          console.error(`[goals:lesson-recall] ${err instanceof Error ? err.message : String(err)}`);
+        }
 
         scored.push(scoreGoalForNextAction(goal, parentDone, hasEntities, hasLessons));
       }

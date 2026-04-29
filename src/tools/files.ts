@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
+import { tryEmbed } from '../embeddings/try-embed.js';
 
 export function registerFileTools(server: McpServer, brain: DevBrain): void {
   server.tool(
@@ -35,15 +36,10 @@ export function registerFileTools(server: McpServer, brain: DevBrain): void {
         metadata: metadata ?? null,
       });
 
-      // Generate and store embedding
       if (summary || path) {
         const text = [path, summary].filter(Boolean).join(': ');
-        try {
-          const embedding = await brain.embeddingProvider.embed(text);
-          brain.vectorStore.upsertFileDigestEmbedding(digest.id, embedding);
-        } catch (e) {
-          console.error('Failed to generate file digest embedding:', e);
-        }
+        const embedding = await tryEmbed(brain.embeddingProvider, text, 'file:digest');
+        if (embedding) brain.vectorStore.upsertFileDigestEmbedding(digest.id, embedding);
       }
 
       return {
