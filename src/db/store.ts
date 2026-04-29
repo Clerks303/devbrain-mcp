@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { Entity, Relation, Observation, Project, GraphSummary, FileDigest, StalenessResult, Issue, Session, SessionEvent, Rule, Lesson, Snapshot } from '../types.js';
 import { encodeCursor, decodeCursor, type Page } from './pagination.js';
+import { SnapshotPayloadSchema, SnapshotCorruptedError } from './snapshot-schema.js';
 
 function now(): string {
   return new Date().toISOString();
@@ -975,17 +976,13 @@ export class KnowledgeStore {
       observations.push(...this.getObservations(e.id));
     }
 
-    let fileDigests: FileDigest[] = [];
-    try { fileDigests = this.listFileDigests(projectId); } catch { /* table may not exist */ }
-
-    let issues: Issue[] = [];
-    try { issues = this.listIssues(projectId); } catch { /* table may not exist */ }
-
-    let rules: Rule[] = [];
-    try { rules = this.listRules(projectId); } catch { /* table may not exist */ }
-
-    let lessons: Lesson[] = [];
-    try { lessons = this.listLessons(projectId); } catch { /* table may not exist */ }
+    // These tables are always created by initDatabase(); a failure here is a real error
+    // (lock contention, schema drift, corruption). Swallowing it would silently produce
+    // an incomplete snapshot that, when later restored, would wipe live data with [].
+    const fileDigests = this.listFileDigests(projectId);
+    const issues = this.listIssues(projectId);
+    const rules = this.listRules(projectId);
+    const lessons = this.listLessons(projectId);
 
     const data = JSON.stringify({ entities, relations, observations, fileDigests, issues, rules, lessons });
 
@@ -1024,14 +1021,23 @@ export class KnowledgeStore {
     const snap = this.db.prepare('SELECT data FROM snapshots WHERE id = ?').get(snapshotId) as { data: string } | undefined;
     if (!snap) throw new Error(`Snapshot not found: ${snapshotId}`);
 
-    const data = JSON.parse(snap.data) as {
-      entities?: Array<Record<string, unknown>>;
-      observations?: Array<Record<string, unknown>>;
-      relations?: Array<Record<string, unknown>>;
-      fileDigests?: Array<Record<string, unknown>>;
-      rules?: Array<Record<string, unknown>>;
-      lessons?: Array<Record<string, unknown>>;
-    };
+    // Parse + validate the payload before touching live data. The restore is a
+    // DELETE-then-INSERT cycle wrapped in a transaction; a malformed payload
+    // would silently insert NULLs (corrupting the project) or throw mid-way
+    // (rolling back, but only after the user already triggered a destructive op).
+    let rawData: unknown;
+    try {
+      rawData = JSON.parse(snap.data);
+    } catch (err) {
+      throw new SnapshotCorruptedError(snapshotId, [`payload is not valid JSON: ${(err as Error).message}`]);
+    }
+
+    const parsed = SnapshotPayloadSchema.safeParse(rawData);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.slice(0, 5).map(i => `${i.path.join('.')}: ${i.message}`);
+      throw new SnapshotCorruptedError(snapshotId, issues);
+    }
+    const data = parsed.data;
 
     const doRestore = this.db.transaction(() => {
       // DELETE in dependency order (CASCADE handles observations/relations from entities)
@@ -1045,7 +1051,7 @@ export class KnowledgeStore {
         this.db.prepare(`
           INSERT OR REPLACE INTO entities (id, name, type, project_id, content, metadata, status, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(e.id, e.name, e.type, e.projectId, e.content ?? null,
+        `).run(e.id, e.name, e.type, e.projectId ?? null, e.content ?? null,
                e.metadata ? JSON.stringify(e.metadata) : null, e.status ?? 'unknown',
                e.createdAt, e.updatedAt);
       }
@@ -1092,6 +1098,16 @@ export class KnowledgeStore {
                l.confidence ?? 0.5, l.occurrences ?? 1,
                l.metadata ? JSON.stringify(l.metadata) : null, l.createdAt, l.updatedAt);
       }
+
+      for (const i of data.issues ?? []) {
+        this.db.prepare(`
+          INSERT OR REPLACE INTO issues (id, project_id, entity_id, file_path, type, title, description, severity, status, resolution, metadata, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(i.id, i.projectId, i.entityId ?? null, i.filePath ?? null, i.type, i.title,
+               i.description ?? null, i.severity ?? 'medium', i.status ?? 'open',
+               i.resolution ?? null,
+               i.metadata ? JSON.stringify(i.metadata) : null, i.createdAt, i.updatedAt);
+      }
     });
 
     doRestore();
@@ -1101,6 +1117,7 @@ export class KnowledgeStore {
       observations: data.observations?.length ?? 0,
       relations: data.relations?.length ?? 0,
       fileDigests: data.fileDigests?.length ?? 0,
+      issues: data.issues?.length ?? 0,
       rules: data.rules?.length ?? 0,
       lessons: data.lessons?.length ?? 0,
     };
