@@ -25,7 +25,7 @@ const INTENT_PATTERNS: ReadonlyArray<{ intent: PromptIntent; patterns: RegExp }>
 ];
 
 /** File path extraction */
-const FILE_PATTERN = /(?:(?:src|tests?|lib|dist|bin|scripts|config)\/[\w.\/\-]+\.\w{1,6})|(?:[\w\-]+\.(?:ts|js|tsx|jsx|json|yaml|yml|py|rs|go|sql|css|html|md))\b/gi;
+const FILE_PATTERN = /(?:(?:src|tests?|lib|dist|bin|scripts|config)\/[\w./-]+\.\w{1,6})|(?:[\w-]+\.(?:ts|js|tsx|jsx|json|yaml|yml|py|rs|go|sql|css|html|md))\b/gi;
 
 /** Identifier extraction (PascalCase + camelCase) */
 const IDENTIFIER_PATTERN = /\b([A-Z][a-zA-Z0-9]{2,}|[a-z][a-zA-Z0-9]{2,}[A-Z][a-zA-Z0-9]*)\b/g;

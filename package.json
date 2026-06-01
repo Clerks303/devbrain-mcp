@@ -1,7 +1,7 @@
 {
   "name": "devbrain-mcp",
   "version": "0.1.0",
-  "description": "Persistent project memory MCP server — knowledge graph + learning for vibe coders",
+  "description": "Persistent project memory MCP server — knowledge graph + learning for AI coding agents",
   "license": "MIT",
   "type": "module",
   "main": "dist/src/index.js",
@@ -19,6 +19,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && npm test"
   },
@@ -30,10 +32,13 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^2.1.0",
+    "eslint": "^9.0.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^2.1.0"
   },
   "engines": {

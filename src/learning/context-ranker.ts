@@ -142,7 +142,7 @@ export function emaUpdate(previous: number, newValue: number, alpha = 0.1): numb
 }
 
 /** Exponential decay for historical score, half-life in days */
-function decayExponential(score: number, halfLifeDays: number): number {
+function decayExponential(score: number, _halfLifeDays: number): number {
   // The score is already the aggregate — just return it clamped
   return Math.max(0, Math.min(1, score));
 }

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
-import * as sqliteVec from 'sqlite-vec';
 import { KnowledgeStore } from '../../src/db/store.js';
 import {
   setProjectVision,
