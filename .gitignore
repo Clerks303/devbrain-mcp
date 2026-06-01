@@ -29,6 +29,7 @@ docs/DEVBRAIN-PRESENTATION-COMPLETE.md
 # Env / secrets
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 

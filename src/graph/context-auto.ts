@@ -50,7 +50,7 @@ export async function getAutoContext(
   } catch { /* ignore */ }
 
   // 2. Rules
-  let rules: Rule[] = [];
+  const rules: Rule[] = [];
   if (includeRules) {
     try {
       // Get matching rules by context
@@ -74,7 +74,7 @@ export async function getAutoContext(
   }
 
   // 3. Lessons
-  let lessons: Lesson[] = [];
+  const lessons: Lesson[] = [];
   if (includeLessons && queryEmbedding) {
     try {
       const lessonResults = vectorStore.searchLessons(queryEmbedding, 3);

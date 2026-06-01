@@ -106,7 +106,7 @@ export class GitObserver {
       const commits = logOutput.trim().split('\n').filter(Boolean);
 
       for (const line of commits) {
-        const [hash, author, date, ...messageParts] = line.split('|');
+        const [hash, author, _date, ...messageParts] = line.split('|');
         if (!hash) continue;
         const message = messageParts.join('|'); // message may contain |
 

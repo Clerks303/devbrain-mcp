@@ -4,7 +4,6 @@ import { KnowledgeStore } from '../../src/db/store.js';
 import { VectorStore } from '../../src/db/vector.js';
 import { LearningOrchestrator } from '../../src/learning/index.js';
 import type { EmbeddingProvider } from '../../src/embeddings/provider.js';
-import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -26,11 +25,9 @@ describe('LearningOrchestrator', () => {
   let store: KnowledgeStore;
   let vectorStore: VectorStore;
   let orchestrator: LearningOrchestrator;
-  let dbPath: string;
 
   beforeEach(() => {
-    const { db, dbPath: p } = createTestDb();
-    dbPath = p;
+    const { db } = createTestDb();
     store = new KnowledgeStore(db);
     vectorStore = new VectorStore(db);
     orchestrator = new LearningOrchestrator(store, vectorStore, mockEmbeddingProvider());

@@ -1,6 +1,7 @@
 # devbrain-mcp
 
 ![tests](https://github.com/Clerks303/devbrain-mcp/actions/workflows/test.yml/badge.svg)
+![coverage](https://codecov.io/gh/Clerks303/devbrain-mcp/branch/main/graph/badge.svg)
 ![license](https://img.shields.io/github/license/Clerks303/devbrain-mcp)
 ![typescript](https://img.shields.io/badge/typescript-5.x-blue)
 ![MCP](https://img.shields.io/badge/MCP-compatible-purple)
@@ -12,7 +13,7 @@ conventions, lessons — so Claude Code (or any MCP-compatible client) picks up
 where the last session left off instead of starting from a blank slate.
 
 DevBrain is the memory half of AgentWeave × DevBrain — a companion desktop
-IDE for vibe coders, currently in development. It also works standalone.
+IDE for AI-assisted developers, currently in development. It also works standalone.
 
 ## Why DevBrain?
 
@@ -87,13 +88,16 @@ Restart the client. DevBrain now appears as a tool provider.
 
 ### Configuration (env vars)
 
+All variables are optional; DevBrain runs with sane defaults. See
+[`.env.example`](.env.example) for the full annotated list.
+
 | Variable                        | Default                        | Purpose                                              |
 |---------------------------------|--------------------------------|------------------------------------------------------|
-| `DEVBRAIN_DB_PATH`              | `./devbrain.db`                | SQLite file (WAL mode, auto-migrated).               |
-| `DEVBRAIN_EMBEDDING_PROVIDER`   | `openai`                       | `openai`, `ollama`, or `none`.                       |
-| `OPENAI_API_KEY`                | —                              | Required when provider is `openai`.                  |
-| `DEVBRAIN_OLLAMA_URL`           | `http://localhost:11434`       | Ollama endpoint for local embeddings.                |
-| `DEVBRAIN_LOG_LEVEL`            | `info`                         | `debug` / `info` / `warn` / `error`.                 |
+| `DEVBRAIN_DB_PATH`              | `~/.devbrain/devbrain.db`      | SQLite file (WAL mode, auto-created).                |
+| `DEVBRAIN_EMBEDDING_PROVIDER`   | _(inferred)_                   | `openai`, `ollama`, or `none`. Inferred from key presence when unset. |
+| `OPENAI_API_KEY`                | —                              | OpenAI key (also `DEVBRAIN_OPENAI_API_KEY`). Used when provider is `openai`. |
+| `DEVBRAIN_OLLAMA_BASE_URL`      | `http://localhost:11434`       | Ollama endpoint for local embeddings.                |
+| `DEVBRAIN_TRANSPORT`           | `stdio`                        | `stdio` (MCP clients) or `sse`.                      |
 | `DEVBRAIN_HOOK_PORT`            | `7384`                         | HTTP port for Claude Code hooks integration.         |
 | `DEVBRAIN_ALLOW_EMBEDDING_RECREATE` | _(unset)_                  | Set to `1` to opt in to destructive vec0 table recreate when the embedding dimension changes (e.g. switching openai 1536 ↔ ollama 768). Without this flag, DevBrain refuses to drop existing embeddings. |
 

@@ -389,7 +389,7 @@ describe('KnowledgeStore — Lessons', () => {
   });
 
   it('should list lessons sorted by confidence', () => {
-    const l1 = store.addLesson({ projectId, trigger: 'Low', action: 'A' });
+    store.addLesson({ projectId, trigger: 'Low', action: 'A' });
     const l2 = store.addLesson({ projectId, trigger: 'High', action: 'B' });
     store.reinforceLesson(l2.id);
     store.reinforceLesson(l2.id);

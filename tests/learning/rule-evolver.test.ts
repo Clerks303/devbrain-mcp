@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { evaluateRules, computeObservance } from '../../src/learning/rule-evolver.js';
 import type { KnowledgeStore } from '../../src/db/store.js';
 import type { LearningStore } from '../../src/learning/learning-store.js';
