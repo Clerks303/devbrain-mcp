@@ -42,4 +42,5 @@ npm-debug.log*
 coverage/
 
 # Personal files (not for public repo)
+CleanShot*.png
 docs/INTERVIEW-DEVBRAIN.md
