@@ -18,14 +18,15 @@ const HOOK_FILES = [
   'devbrain-session-end.js',
 ];
 
-// Source: from compiled dist/src/hooks/ or src/hooks/.
-// When running from dist/bin/, __dirname is dist/bin → ../.. is project root.
-// When running from bin/ (ts-node/dev), __dirname is bin → .. is project root.
+// Source: from compiled dist/src/hooks/ (npm tarball) or src/hooks/ (checkout).
+// When running from dist/bin/, __dirname is dist/bin → ../src/hooks is the
+// copy shipped by `npm run build` (scripts/copy-hooks.js), included in the
+// npm tarball. When running from bin/ (ts-node/dev), the same relative path
+// resolves to the project-root src/hooks.
 function findHookSource(): string {
-  // Try project-root/src/hooks (works for both dist/bin and bin/ launch)
   const candidates = [
-    path.resolve(__dirname, '..', '..', 'src', 'hooks'), // from dist/bin
-    path.resolve(__dirname, '..', 'src', 'hooks'),       // from bin (dev)
+    path.resolve(__dirname, '..', 'src', 'hooks'),       // dist/src/hooks, or src/hooks in dev
+    path.resolve(__dirname, '..', '..', 'src', 'hooks'), // repo-root src/hooks from dist/bin
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;
