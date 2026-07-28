@@ -12,12 +12,14 @@ dist/
 .bridgespace/
 .serena/
 
-# Internal docs (not for public repo)
-docs/PLAN-IMPLEMENTATION-V2.md
-docs/PRESENTATION-PROJET-devbrain.md
-docs/presentation-mentor.md
-docs/DEVBRAIN-PRESENTATION-COMPLETE.md
-docs/DevBrain-Interview-Prep.pdf
+# Local working docs & private notes (not for the public repo)
+docs/private/
+docs/PLAN-*
+docs/*PRESENTATION*
+docs/presentation-*
+docs/*INTERVIEW*
+docs/*Interview*
+docs/AUDIT-*
 
 # Databases
 *.db
@@ -41,6 +43,7 @@ npm-debug.log*
 # Coverage
 coverage/
 
-# Personal files (not for public repo)
+# Local screenshots & exports (not for the public repo)
+/*.png
+/*.pdf
 CleanShot*.png
-docs/INTERVIEW-DEVBRAIN.md
