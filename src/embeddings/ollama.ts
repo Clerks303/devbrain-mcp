@@ -47,7 +47,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       return data.embedding;
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error(`Ollama embed timeout after ${this.timeoutMs}ms`);
+        throw new Error(`Ollama embed timeout after ${this.timeoutMs}ms`, { cause: err });
       }
       throw err;
     } finally {

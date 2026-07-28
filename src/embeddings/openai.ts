@@ -52,7 +52,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         .map(d => d.embedding);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error(`OpenAI embed timeout after ${this.timeoutMs}ms`);
+        throw new Error(`OpenAI embed timeout after ${this.timeoutMs}ms`, { cause: err });
       }
       throw err;
     } finally {

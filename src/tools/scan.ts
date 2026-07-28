@@ -63,7 +63,7 @@ async function walkDirectory(
   const results: string[] = [];
 
   async function recurse(dir: string): Promise<void> {
-    let entries: Array<{ name: string; isDir: boolean; isFile: boolean }> = [];
+    let entries: Array<{ name: string; isDir: boolean; isFile: boolean }>;
     try {
       const raw = await fs.readdir(dir, { withFileTypes: true });
       entries = raw.map(e => ({ name: e.name, isDir: e.isDirectory(), isFile: e.isFile() }));

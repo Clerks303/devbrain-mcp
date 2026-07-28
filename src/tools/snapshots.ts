@@ -135,7 +135,7 @@ export function registerSnapshotTools(server: McpServer, brain: DevBrain): void 
       }
 
       // Parse to get counts for dry-run
-      let dataSummary: Record<string, number> = {};
+      let dataSummary: Record<string, number>;
       try {
         const parsed = JSON.parse(snapshot.data);
         dataSummary = {
