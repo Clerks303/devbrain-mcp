@@ -24,7 +24,7 @@ the conventions, the past mistakes, and the gotchas every single time.
 DevBrain solves this by maintaining a typed knowledge graph of your project that
 the agent can query, update, and learn from across sessions. It tracks entities
 and relations (files, modules, decisions), records lessons from outcomes, scopes
-rules per file pattern or entity type, and exposes everything through ~70 MCP
+rules per file pattern or entity type, and exposes everything through 70 MCP
 tools that any compatible client (Claude Code, Cursor, Claude Desktop) can use.
 
 Think of it as a long-term memory layer for your coding agent — one that gets
@@ -103,7 +103,7 @@ All variables are optional; DevBrain runs with sane defaults. See
 
 ## What it gives your agent
 
-DevBrain exposes **~70 MCP tools** across these categories:
+DevBrain exposes **70 MCP tools** across these categories:
 
 - **Graph (9)** — entities, relations, observations, projects, traversal.
 - **Files (5)** — content-hash digests, symbol extraction, fast file lookup.
@@ -118,6 +118,10 @@ DevBrain exposes **~70 MCP tools** across these categories:
 - **Scan & health (4)** — project scan, DB health, embedding coverage, metrics.
 
 The full authoritative list is surfaced via the MCP `tools/list` request.
+Alongside tools, the server also publishes MCP **resources** (browsable
+project state) and **prompts**. Three embedding providers are supported —
+OpenAI (1536d), Ollama (768d, local) and a NoOp fallback — so search
+degrades gracefully instead of failing when no provider is configured.
 
 ## Integration with AgentWeave
 
@@ -139,8 +143,10 @@ npm run build
 npm test
 ```
 
-Tests use Vitest. Build output goes to `dist/`. `npm run build` also applies a
-shebang to binary entry points so `npm link` produces working CLI shims.
+The suite is 398 Vitest tests across 41 files. Build output goes to `dist/`;
+`npm run build` also applies a shebang to binary entry points so `npm link`
+produces working CLI shims, and copies the Claude Code hook scripts into
+`dist/src/hooks` so they ship in the npm tarball.
 
 ## License
 
