@@ -1,8 +1,31 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { z } from 'zod';
 import type { DevBrain } from '../server.js';
 import { getAutoContext } from '../graph/context-auto.js';
+
+// Hook payloads come over plain HTTP without auth — length limits keep a
+// malformed or malicious caller from stuffing megabytes into the DB.
+const SessionStartBodySchema = z.object({
+  cwd: z.string().min(1).max(4096),
+  goal: z.string().max(2000).optional(),
+});
+
+const PostToolBodySchema = z.object({
+  tool_name: z.string().min(1).max(256),
+  tool_input: z.record(z.unknown()).optional(),
+});
+
+const SessionEndBodySchema = z.object({
+  session_id: z.string().max(128).optional(),
+});
+
+function formatZodError(error: z.ZodError): string {
+  const issue = error.issues[0];
+  const field = issue.path.join('.') || 'body';
+  return `Invalid ${field}: ${issue.message}`;
+}
 
 const DEVBRAIN_DIR = path.join(os.homedir(), '.devbrain');
 const SESSIONS_DIR = path.join(DEVBRAIN_DIR, 'sessions');
@@ -114,10 +137,14 @@ export async function handleSessionStart(
   brain: DevBrain,
   body: Record<string, unknown>,
 ): Promise<SessionStartResult> {
-  const cwd = typeof body.cwd === 'string' ? body.cwd : null;
-  if (!cwd) {
+  if (typeof body.cwd !== 'string' || !body.cwd) {
     return { ok: false, error: 'Missing cwd' };
   }
+  const parsed = SessionStartBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
+  }
+  const cwd = parsed.data.cwd;
 
   // If there's already an active session, don't create another (idempotent)
   if (brain.activeSessionId) {
@@ -148,7 +175,7 @@ export async function handleSessionStart(
   });
 
   // 4. Start session
-  const goal = typeof body.goal === 'string' ? body.goal : `Session on ${detected.name}`;
+  const goal = parsed.data.goal ?? `Session on ${detected.name}`;
   const session = brain.store.startSession({ projectId: detected.id, goal });
   brain.activeSessionId = session.id;
 
@@ -237,10 +264,14 @@ export async function handlePostTool(
   brain: DevBrain,
   body: Record<string, unknown>,
 ): Promise<PostToolResult> {
-  const toolName = typeof body.tool_name === 'string' ? body.tool_name : null;
-  if (!toolName) {
+  if (typeof body.tool_name !== 'string' || !body.tool_name) {
     return { ok: false, error: 'Missing tool_name' };
   }
+  const parsed = PostToolBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return { ok: false, error: formatZodError(parsed.error) };
+  }
+  const toolName = parsed.data.tool_name;
 
   // Ignore read-only tools
   if (IGNORED_TOOLS.has(toolName)) {
@@ -269,7 +300,7 @@ export async function handlePostTool(
 
   // Digest file for write operations
   if (DIGEST_TOOLS.has(toolName)) {
-    const input = body.tool_input as Record<string, unknown> | undefined;
+    const input = parsed.data.tool_input;
     const filePath = typeof input?.file_path === 'string'
       ? input.file_path
       : typeof input?.path === 'string'
@@ -341,8 +372,13 @@ export async function handleSessionEnd(
   brain: DevBrain,
   body: Record<string, unknown>,
 ): Promise<SessionEndResult> {
+  const parsedEnd = SessionEndBodySchema.safeParse(body);
+  if (!parsedEnd.success) {
+    return { ok: false, error: formatZodError(parsedEnd.error) };
+  }
+
   // Read session ID from body or from current.json
-  let sessionId = typeof body.session_id === 'string' ? body.session_id : null;
+  let sessionId = parsedEnd.data.session_id ?? null;
 
   if (!sessionId) {
     const current = readCurrentSession();

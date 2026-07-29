@@ -134,6 +134,17 @@ describe('FTS5 search', () => {
     expect(results.length).toBe(0);
   });
 
+  it('should strip FTS5 boolean operators from name queries', () => {
+    store.addEntity({ name: 'AlphaService', type: 'class' });
+    store.addEntity({ name: 'BetaService', type: 'class' });
+
+    // A leading "-" must not act as an FTS5 NOT operator (which would
+    // invert the match and return every OTHER entity)
+    const results = store.findEntitiesByName('-Alpha');
+    expect(results.some(e => e.name === 'BetaService')).toBe(false);
+    expect(results.some(e => e.name === 'AlphaService')).toBe(true);
+  });
+
   it('should handle entity updates with FTS sync', () => {
     const entity = store.addEntity({ name: 'OldName', type: 'class' });
 

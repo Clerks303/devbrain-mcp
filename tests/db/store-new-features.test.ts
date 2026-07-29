@@ -238,12 +238,12 @@ describe('KnowledgeStore — Rules', () => {
     const rule = store.addRule({
       projectId, content: 'Use PascalCase for components',
       scope: 'file_pattern', pattern: 'src/components/*.tsx',
-      severity: 'must', metadata: { author: 'romain' },
+      severity: 'must', metadata: { author: 'test-author' },
     });
     expect(rule.scope).toBe('file_pattern');
     expect(rule.pattern).toBe('src/components/*.tsx');
     expect(rule.severity).toBe('must');
-    expect(rule.metadata).toEqual({ author: 'romain' });
+    expect(rule.metadata).toEqual({ author: 'test-author' });
   });
 
   it('should update a rule', () => {

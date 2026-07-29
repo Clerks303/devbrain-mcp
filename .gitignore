@@ -12,14 +12,9 @@ dist/
 .bridgespace/
 .serena/
 
-# Internal docs (not for public repo)
-docs/PLAN-IMPLEMENTATION-V2.md
-docs/PRESENTATION-PROJET-devbrain.md
-docs/presentation-mentor.md
-docs/AUDIT-ENTRETIEN-MARCO-CASTELLUCCIO.md
-docs/DEVBRAIN-PRESENTATION-COMPLETE.md
-docs/INTERVIEW-PREP-MARCO.html
-docs/DevBrain-Interview-Prep.pdf
+# Internal docs (not for public repo) — deny by default, allowlist what ships
+docs/*
+!docs/CHOICES.md
 
 # Databases
 *.db
@@ -46,4 +41,3 @@ coverage/
 # Personal files (not for public repo)
 *.pdf
 CleanShot*.png
-docs/INTERVIEW-DEVBRAIN.md

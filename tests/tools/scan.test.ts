@@ -120,4 +120,29 @@ describe('scanProject', () => {
       projectPath: '/tmp/non-existent-devbrain-scan-target-xyz',
     })).rejects.toThrow();
   });
+
+  describe('scan root validation', () => {
+    it('refuses the filesystem root', async () => {
+      await expect(scanProject(ctx.brain, { projectPath: '/' }))
+        .rejects.toThrow(/refusing to scan/i);
+    });
+
+    it('refuses the home directory itself', async () => {
+      await expect(scanProject(ctx.brain, { projectPath: os.homedir() }))
+        .rejects.toThrow(/refusing to scan/i);
+    });
+
+    it('refuses paths inside hidden directories', async () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'devbrain-hidden-test-'));
+      const hidden = path.join(tmp, '.secrets');
+      fs.mkdirSync(hidden);
+      fs.writeFileSync(path.join(hidden, 'notes.md'), '# secret');
+      try {
+        await expect(scanProject(ctx.brain, { projectPath: hidden }))
+          .rejects.toThrow(/refusing to scan/i);
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+  });
 });

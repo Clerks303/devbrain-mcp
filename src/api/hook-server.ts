@@ -8,11 +8,39 @@ export interface HookServer {
   close(): Promise<void>;
 }
 
+// The hook server only receives small JSON payloads from local Claude Code
+// hooks — anything bigger is a bug or an abuse attempt, not a legit request.
+const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+
+export class PayloadTooLargeError extends Error {
+  constructor() {
+    super(`Request body exceeds ${MAX_BODY_BYTES} bytes`);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    let chunks: Buffer[] = [];
+    let received = 0;
+    let tooLarge = false;
+    req.on('data', (chunk: Buffer) => {
+      received += chunk.length;
+      if (received > MAX_BODY_BYTES) {
+        // Keep draining so the response can still be written, but discard data
+        tooLarge = true;
+        chunks = [];
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (tooLarge) {
+        reject(new PayloadTooLargeError());
+        return;
+      }
+      resolve(Buffer.concat(chunks).toString('utf-8'));
+    });
     req.on('error', reject);
   });
 }
@@ -26,15 +54,23 @@ function jsonResponse(res: ServerResponse, status: number, body: unknown): void 
   res.end(json);
 }
 
-async function parseJsonBody(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+type ParsedBody =
+  | { readonly ok: true; readonly body: Record<string, unknown> }
+  | { readonly ok: false; readonly status: 400 | 413; readonly error: string };
+
+async function parseJsonBody(req: IncomingMessage): Promise<ParsedBody> {
   try {
     const raw = await readBody(req);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return null;
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { ok: false, status: 400, error: 'Invalid JSON body' };
+    }
+    return { ok: true, body: parsed as Record<string, unknown> };
+  } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      return { ok: false, status: 413, error: 'Payload too large' };
+    }
+    return { ok: false, status: 400, error: 'Invalid JSON body' };
   }
 }
 
@@ -43,8 +79,9 @@ export function createHookServer(brain: DevBrain, port: number): HookServer {
     const url = new URL(req.url ?? '/', `http://localhost:${port}`);
     const method = req.method ?? 'GET';
 
-    // CORS headers for local scripts
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // No CORS headers on purpose: callers are local scripts (curl, Node
+    // hooks), never browsers. A wildcard here would open the server to
+    // DNS-rebinding attacks from any web page.
 
     try {
       if (url.pathname === '/health' && method === 'GET') {
@@ -62,11 +99,12 @@ export function createHookServer(brain: DevBrain, port: number): HookServer {
         return;
       }
 
-      const body = await parseJsonBody(req);
-      if (!body) {
-        jsonResponse(res, 400, { error: 'Invalid JSON body' });
+      const parsed = await parseJsonBody(req);
+      if (!parsed.ok) {
+        jsonResponse(res, parsed.status, { error: parsed.error });
         return;
       }
+      const body = parsed.body;
 
       if (url.pathname === '/api/hook/session-start') {
         const result = await handleSessionStart(brain, body);

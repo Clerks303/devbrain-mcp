@@ -94,7 +94,7 @@ function fetchEntities(
   const searchTerms = [...analysis.keywords, ...analysis.mentionedIdentifiers].slice(0, 8);
   if (searchTerms.length > 0) {
     const ftsQuery = searchTerms
-      .map(t => t.replace(/['"*():^~{}/\\]/g, ''))
+      .map(t => t.replace(/['"*():^~{}/\\+-]/g, ''))
       .filter(Boolean)
       .join(' OR ');
 
@@ -173,7 +173,7 @@ function fetchLessons(
   try {
     // FTS search on lessons
     const ftsQuery = searchTerms
-      .map(t => t.replace(/['"*():^~{}/\\]/g, ''))
+      .map(t => t.replace(/['"*():^~{}/\\+-]/g, ''))
       .filter(Boolean)
       .join(' OR ');
 

@@ -254,4 +254,41 @@ describe('HookServer', { sequential: true }, () => {
       expect(body.error).toBe('Invalid JSON body');
     });
   });
+
+  describe('hardening', () => {
+    it('should not send a CORS Access-Control-Allow-Origin header', async () => {
+      const res = await fetch(`http://127.0.0.1:${testPort}/health`);
+      expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    });
+
+    it('should return 413 for bodies larger than 1 MB', async () => {
+      const res = await fetch(`http://127.0.0.1:${testPort}/api/hook/session-start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cwd: '/tmp/x', goal: 'g'.repeat(1024 * 1024 + 1024) }),
+      });
+      const body = await res.json() as Record<string, unknown>;
+      expect(res.status).toBe(413);
+      expect(body.error).toBe('Payload too large');
+    });
+
+    it('should reject session-start with an oversized goal', async () => {
+      brain.store.addProject({ name: 'test-project', path: '/tmp/test-project' });
+
+      const { body } = await httpRequest(testPort, '/api/hook/session-start', {
+        method: 'POST',
+        body: { cwd: '/tmp/test-project', goal: 'g'.repeat(2001) },
+      });
+      expect(body.ok).toBe(false);
+      expect(body.error).toContain('goal');
+    });
+
+    it('should reject post-tool with an oversized tool_name', async () => {
+      const { body } = await httpRequest(testPort, '/api/hook/post-tool', {
+        method: 'POST',
+        body: { tool_name: 't'.repeat(300) },
+      });
+      expect(body.ok).toBe(false);
+    });
+  });
 });

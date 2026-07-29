@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import fs from 'node:fs/promises';
 import { statSync, readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DevBrain } from '../server.js';
@@ -63,7 +64,7 @@ async function walkDirectory(
   const results: string[] = [];
 
   async function recurse(dir: string): Promise<void> {
-    let entries: Array<{ name: string; isDir: boolean; isFile: boolean }> = [];
+    let entries: Array<{ name: string; isDir: boolean; isFile: boolean }>;
     try {
       const raw = await fs.readdir(dir, { withFileTypes: true });
       entries = raw.map(e => ({ name: e.name, isDir: e.isDirectory(), isFile: e.isFile() }));
@@ -165,6 +166,30 @@ export interface ScanOptions {
  * Resolves or creates the project, walks source files, upserts digests,
  * detects simple conventions.
  */
+/**
+ * The scan root comes from the calling agent, so it must be treated as
+ * untrusted: scanning "/", the home directory, or a hidden directory
+ * (~/.ssh, ~/.aws, …) would index files that have no business in the DB.
+ */
+function assertSafeScanRoot(projectPath: string): string {
+  const resolved = path.resolve(projectPath);
+  if (resolved === path.parse(resolved).root) {
+    throw new Error(`Refusing to scan the filesystem root: ${resolved}`);
+  }
+  if (resolved === os.homedir()) {
+    throw new Error(`Refusing to scan the home directory itself: ${resolved}`);
+  }
+  const hiddenSegment = resolved.split(path.sep).find(
+    seg => seg.startsWith('.') && seg !== '.' && seg !== '..',
+  );
+  if (hiddenSegment) {
+    throw new Error(
+      `Refusing to scan inside hidden directory "${hiddenSegment}": ${resolved}`,
+    );
+  }
+  return resolved;
+}
+
 export async function scanProject(
   brain: DevBrain,
   options: ScanOptions,
@@ -172,16 +197,17 @@ export async function scanProject(
   const started = Date.now();
 
   // Validate path
-  const stat = await fs.stat(options.projectPath);
+  const safeRoot = assertSafeScanRoot(options.projectPath);
+  const stat = await fs.stat(safeRoot);
   if (!stat.isDirectory()) {
-    throw new Error(`Not a directory: ${options.projectPath}`);
+    throw new Error(`Not a directory: ${safeRoot}`);
   }
 
   // Resolve or create project
-  let project = brain.store.getProjectByPath(options.projectPath);
+  let project = brain.store.getProjectByPath(safeRoot);
   if (!project) {
-    const name = options.projectPath.split(path.sep).filter(Boolean).pop() ?? 'unknown';
-    project = brain.store.addProject({ name, path: options.projectPath });
+    const name = safeRoot.split(path.sep).filter(Boolean).pop() ?? 'unknown';
+    project = brain.store.addProject({ name, path: safeRoot });
   }
   brain.activeProjectId = project.id;
 
@@ -194,7 +220,7 @@ export async function scanProject(
     ? new Set(options.includeGlob.map(e => e.startsWith('.') ? e : `.${e}`))
     : INCLUDED_EXTENSIONS;
 
-  const allFiles = await walkDirectory(options.projectPath, excludeSegments);
+  const allFiles = await walkDirectory(safeRoot, excludeSegments);
 
   let filesScanned = 0;
   let filesSkipped = 0;

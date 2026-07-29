@@ -146,8 +146,9 @@ export class EntityRepository {
   }
 
   private findEntitiesByNameFts(name: string, projectId?: string | null): Entity[] {
-    // Escape FTS5 special characters and use prefix search
-    const ftsQuery = name.replace(/['"*():^~{}/\\]/g, '');
+    // Escape FTS5 special characters (including boolean operators - and +,
+    // which would otherwise invert or alter the match) and use prefix search
+    const ftsQuery = name.replace(/['"*():^~{}/\\+-]/g, '');
     if (!ftsQuery.trim()) {
       return [];
     }
