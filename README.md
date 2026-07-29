@@ -79,7 +79,16 @@ on your machine — that's what DevBrain is built for.
 
 ## Install
 
-DevBrain isn't on npm yet — install from source:
+```bash
+npm install -g devbrain-mcp
+```
+
+This exposes the `devbrain-mcp` binary on your PATH so MCP clients
+(Claude Desktop, Claude Code, Cursor) can spawn it by name. You can also
+skip the install entirely and let your MCP client run it via `npx` (see below).
+
+<details>
+<summary>Install from source instead</summary>
 
 ```bash
 git clone https://github.com/Clerks303/devbrain-mcp.git
@@ -89,8 +98,7 @@ npm run build
 npm link            # exposes `devbrain-mcp` on your PATH
 ```
 
-`npm link` makes the `devbrain-mcp` binary globally available so MCP clients
-(Claude Desktop, Claude Code) can spawn it by name.
+</details>
 
 ## Quick start
 
@@ -107,6 +115,19 @@ Add to your MCP config (e.g. `~/Library/Application Support/Claude/claude_deskto
         "DEVBRAIN_DB_PATH": "~/.devbrain/memory.db",
         "OPENAI_API_KEY": "sk-..."
       }
+    }
+  }
+}
+```
+
+No global install? Use `npx` instead:
+
+```json
+{
+  "mcpServers": {
+    "devbrain": {
+      "command": "npx",
+      "args": ["-y", "devbrain-mcp"]
     }
   }
 }
