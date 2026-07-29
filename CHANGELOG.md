@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ESLint flat config (`eslint.config.js`) with `typescript-eslint`, plus `lint` / `lint:fix` scripts.
 - Coverage job in CI (Codecov upload) and a coverage badge in the README.
 - `.env.example` documenting every supported environment variable.
+- `CONTRIBUTING.md` with development workflow and contribution guidelines.
+- README: "How it compares" section, requirements (Node >= 20, native modules),
+  and a 2-minute tour of typical agent interactions.
+
+### Security
+- `devbrain_scan_project` now refuses unsafe scan roots: the filesystem root,
+  the home directory itself, and hidden directories (`~/.ssh`, `~/.aws`, …).
+- Hook server: request bodies are capped at 1 MB (413 beyond) and the CORS
+  wildcard header was removed to close a DNS-rebinding vector.
+- Hook payloads (`session-start`, `post-tool`, `session-end`) are validated
+  with Zod schemas, including length limits on all string fields.
+- FTS5 name queries now strip the `-` / `+` boolean operators so a crafted
+  entity name cannot invert search results.
+- Dependency upgrades (vitest 4, eslint 10, MCP SDK): `npm audit` is clean —
+  0 known vulnerabilities.
 
 ## [0.1.0] - 2026-06-01
 

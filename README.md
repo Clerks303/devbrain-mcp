@@ -49,6 +49,34 @@ WAL mode for concurrent reads, augmented with sqlite-vec for embeddings and
 FTS5 for full-text. A hybrid ranker fuses both signals when the agent asks
 for context.
 
+## How it compares
+
+Plenty of MCP memory servers exist. DevBrain's angle is a **typed, project-scoped
+knowledge graph with hybrid retrieval** rather than a flat note store:
+
+|                                  | DevBrain | Reference `server-memory` | mem0 / cloud memory |
+|----------------------------------|----------|---------------------------|---------------------|
+| Storage                          | Local SQLite (WAL), single file | Local JSON | Cloud API (SaaS) |
+| Retrieval                        | Hybrid FTS5 + vectors, fused with Reciprocal Rank Fusion | Name/text lookup | Vector search |
+| Typed graph (entities, relations, observations) | ✅ | ✅ (untyped) | Partial |
+| Project scoping & per-project rules | ✅ | ❌ | Varies |
+| Sessions with summaries & resume-context | ✅ | ❌ | Partial |
+| Learning loop (lessons from outcomes, reinforcement) | ✅ | ❌ | ❌ |
+| Snapshots / restore before risky refactors | ✅ | ❌ | ❌ |
+| Works fully offline (Ollama or no embeddings) | ✅ | ✅ | ❌ |
+
+If you need a quick scratchpad memory, the reference server is simpler. If you
+want your agent to accumulate real project knowledge over weeks — and keep it
+on your machine — that's what DevBrain is built for.
+
+## Requirements
+
+- **Node.js >= 20**
+- DevBrain uses native modules (`better-sqlite3`, `sqlite-vec`). Prebuilt
+  binaries cover macOS (Intel & Apple Silicon) and Linux x64; other platforms
+  may compile from source on `npm install` (requires a C++ toolchain).
+  Primary development platform is macOS.
+
 ## Install
 
 DevBrain isn't on npm yet — install from source:
@@ -85,6 +113,30 @@ Add to your MCP config (e.g. `~/Library/Application Support/Claude/claude_deskto
 ```
 
 Restart the client. DevBrain now appears as a tool provider.
+
+### 2-minute tour
+
+Once connected, ask your agent things like:
+
+```text
+> Scan this project and remember its structure
+  → devbrain_scan_project indexes files, detects conventions, creates digests
+
+> Remember that we chose SQLite over Postgres for zero-ops portability
+  → devbrain_add_entity type=decision + devbrain_add_observation
+
+> Start a session: migrate the auth module to the new API
+  → devbrain_start_session — tool calls and decisions are tracked
+
+> What do we know about the auth module?
+  → devbrain_search fuses full-text + vector similarity (RRF) over the graph
+
+> End the session
+  → devbrain_end_session writes a summary the NEXT session resumes from
+```
+
+Next time the agent starts, `devbrain_auto_context` injects the relevant
+rules, lessons, open issues and last-session summary — no re-explaining.
 
 ### Configuration (env vars)
 
