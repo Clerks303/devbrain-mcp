@@ -138,12 +138,14 @@ list.
 ## 7. Current state & limits (v0.1.0)
 
 - **Solid:** 398 passing tests, strict TypeScript (zero `any`), well-covered data layer,
-  graph integrity via FK cascades, graceful embedding degradation. Coverage reporting is
-  wired (`npm run test:coverage`, v8): ~52% lines / 78% functions / 76% branches today.
-- **Weakest spots (known):** `db/store.ts` (~1300 LOC) is overdue for a split by
-  aggregate, and line coverage trails the 80% target. The daemon git observer and the MCP
-  `isError` error paths now have end-to-end tests; the other observers (build/deps/file)
-  still lack integration coverage.
+  graph integrity via FK cascades, graceful embedding degradation. The former `db/store.ts`
+  god object is split into per-aggregate repositories (`store.ts` is now a ~290-LOC facade).
+  Coverage reporting is wired (`npm run test:coverage`, v8): ~56% lines / 61% functions /
+  46% branches today.
+- **Weakest spots (known):** line coverage trails the 80% target. The daemon git observer
+  and the MCP `isError` error paths have end-to-end tests; the other observers
+  (build/deps/file) still lack integration coverage. Cursor-based pagination exists in the
+  entity/issue repositories but is not yet surfaced through the MCP tools.
 - **Not yet built:** shared/team memory, a formal schema-migration system (snapshots are
   versioned, but there's no migration runner), and request hardening on the hook server.
 
