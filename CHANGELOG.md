@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-29
+
 ### Added
 - ESLint flat config (`eslint.config.js`) with `typescript-eslint`, plus `lint` / `lint:fix` scripts.
 - Coverage job in CI (Codecov upload) and a coverage badge in the README.
@@ -14,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CONTRIBUTING.md` with development workflow and contribution guidelines.
 - README: "How it compares" section, requirements (Node >= 20, native modules),
   and a 2-minute tour of typical agent interactions.
+- Dependabot config (weekly, npm + GitHub Actions, minor/patch grouped).
+
+### Changed
+- `db/store.ts` god object split into per-aggregate repositories.
+- `@modelcontextprotocol/sdk` `^1.12` → `^1.30`, vitest 2 → 4, eslint 9 → 10:
+  `npm audit` now reports zero vulnerabilities.
+- `.gitignore` denies `docs/` and private files by default, allowlisting the
+  docs that ship.
+
+### Fixed
+- Claude Code hook scripts are now copied to `dist/src/hooks` at build time, so
+  `devbrain-install-hooks` works from an npm-installed package, not only from a
+  git checkout.
+- Timeout errors thrown by the OpenAI/Ollama embedding providers now carry the
+  original error as `cause`.
 
 ### Security
 - `devbrain_scan_project` now refuses unsafe scan roots: the filesystem root,
@@ -24,8 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with Zod schemas, including length limits on all string fields.
 - FTS5 name queries now strip the `-` / `+` boolean operators so a crafted
   entity name cannot invert search results.
-- Dependency upgrades (vitest 4, eslint 10, MCP SDK): `npm audit` is clean —
-  0 known vulnerabilities.
 
 ## [0.1.0] - 2026-06-01
 
@@ -41,5 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git observer daemon with resume-from-HEAD and a serialized write queue.
 - SQLite storage (WAL mode, foreign keys on) with automatic schema migration.
 
-[Unreleased]: https://github.com/Clerks303/devbrain-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Clerks303/devbrain-mcp/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Clerks303/devbrain-mcp/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Clerks303/devbrain-mcp/releases/tag/v0.1.0

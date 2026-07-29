@@ -40,4 +40,5 @@ coverage/
 
 # Personal files (not for public repo)
 *.pdf
+/*.png
 CleanShot*.png

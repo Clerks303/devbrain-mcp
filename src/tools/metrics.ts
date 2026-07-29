@@ -68,7 +68,7 @@ export function registerMetricsTools(server: McpServer, brain: DevBrain): void {
       const uptimeSeconds = Math.floor(uptimeMs / 1000);
 
       const metrics = {
-        version: '0.1.0',
+        version: '0.1.1',
         uptime: {
           seconds: uptimeSeconds,
           human: formatUptime(uptimeSeconds),
