@@ -11,7 +11,7 @@
     "devbrain-daemon": "dist/bin/devbrain-daemon.js"
   },
   "scripts": {
-    "build": "tsc && node scripts/add-shebang.js",
+    "build": "tsc && node scripts/add-shebang.js && node scripts/copy-hooks.js",
     "dev": "tsc --watch",
     "start": "node dist/src/index.js",
     "daemon": "node dist/bin/devbrain-daemon.js",
