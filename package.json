@@ -35,10 +35,10 @@
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^4.1.10",
-    "eslint": "^10.8.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.9.0",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.65.0",
+    "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.10"
   },
   "engines": {
